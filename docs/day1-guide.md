@@ -37,7 +37,7 @@
 
 - 合约：`deposit/withdraw` 可用；`margin()` 可读。
 - 测试：`contract/test/Day1Margin.t.sol` 全部通过。
-- 前端：能在 UI 上完成一次充值 + 一次提现，并看到余额变化。
+- 前端：完善 `useExchange.tsx`，能在 UI 上完成一次充值 + 一次提现，并看到余额变化。
 
 ---
 
@@ -161,6 +161,100 @@ function withdraw(uint256 amount) external virtual nonReentrant {
 - 提现后 `margin()` 正确减少
 - `withdraw(0)` 按指定错误信息 revert
 - 超额提现按指定错误信息 revert
+
+
+---
+
+### Step 5: 前端实现 (useExchange.tsx)
+
+为了让前端按钮真正可用，你需要完善 React Hook 里的合约调用逻辑。
+
+修改文件：
+
+- `frontend/hooks/useExchange.tsx`
+
+你需要实现三个核心函数：
+
+1. `refresh()`: 读取链上余额
+2. `deposit(amount)`: 调用合约充值
+3. `withdraw(amount)`: 调用合约提现
+
+关键点：
+
+- 使用 `viem` 的 `publicClient.readContract` 读取数据。
+- 使用 `walletClient.writeContract` 发送交易。
+- 交易后等待回执 `waitForTransactionReceipt`，然后刷新数据。
+
+参考实现：
+
+```typescript
+// 1. 刷新余额
+const refresh = useCallback(async () => {
+    if (!EXCHANGE_ADDRESS || !account) return;
+    setSyncing(true);
+    try {
+        const marginBal = await publicClient.readContract({
+            address: EXCHANGE_ADDRESS,
+            abi: EXCHANGE_ABI,
+            functionName: 'margin' as const, // 注意 as const 解决类型推断
+            args: [account],
+        }) as bigint;
+        setMargin(marginBal);
+        setError(undefined);
+    } catch (e: any) {
+        console.error(e);
+    } finally {
+        setSyncing(false);
+    }
+}, [account]);
+
+// 2. 充值
+const deposit = useCallback(async (amount: string) => {
+    try {
+        const walletClient = await getWalletClient();
+        if (!walletClient) throw new Error('No wallet connected');
+        
+        const hash = await walletClient.writeContract({
+            address: EXCHANGE_ADDRESS!,
+            abi: EXCHANGE_ABI,
+            functionName: 'deposit',
+            value: parseEther(amount),
+            account: walletClient.account,
+            chain: chain,
+        });
+        await publicClient.waitForTransactionReceipt({ hash });
+        await refresh();
+    } catch (e: any) {
+        setError(e.message || 'Deposit failed');
+    }
+}, [refresh]);
+
+// 3. 提现
+const withdraw = useCallback(async (amount: string) => {
+    try {
+        const walletClient = await getWalletClient();
+        if (!walletClient) throw new Error('No wallet connected');
+
+        const hash = await walletClient.writeContract({
+            address: EXCHANGE_ADDRESS!,
+            abi: EXCHANGE_ABI,
+            functionName: 'withdraw',
+            args: [parseEther(amount)],
+            account: walletClient.account,
+            chain: chain,
+        });
+        await publicClient.waitForTransactionReceipt({ hash });
+        await refresh();
+    } catch (e: any) {
+        setError(e.message || 'Withdraw failed');
+    }
+}, [refresh]);
+```
+
+预期行为：
+
+- 刷新页面后，Console 不再报错 `TODO`。
+- Deposit/Withdraw 操作能拉起钱包签名，并成功上链。
 
 ---
 
