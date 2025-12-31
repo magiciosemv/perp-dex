@@ -89,11 +89,9 @@ function canLiquidate(address trader) public view virtual returns (bool) {
 ### Step 3: 实现 `_clearTraderOrders()` 和 `_removeOrders()`
 
 ```solidity
-function _clearTraderOrders(address trader) internal returns (uint256 freedLocked) {
-    freedLocked = 0;
+function _clearTraderOrders(address trader) internal {
     bestBuyId = _removeOrders(bestBuyId, trader);
     bestSellId = _removeOrders(bestSellId, trader);
-    accounts[trader].freeMargin += freedLocked;
 }
 
 function _removeOrders(uint256 headId, address trader) internal returns (uint256 newHead) {
