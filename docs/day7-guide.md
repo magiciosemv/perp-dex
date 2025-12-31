@@ -110,6 +110,7 @@ function _removeOrders(uint256 headId, address trader) internal returns (uint256
             } else {
                 orders[prev].next = next;
             }
+            pendingOrderCount[trader]--;  // 更新挂单计数
             emit OrderRemoved(o.id);
             delete orders[current];
             current = next;
@@ -133,7 +134,6 @@ function _removeOrders(uint256 headId, address trader) internal returns (uint256
 function liquidate(address trader, uint256 amount) external virtual nonReentrant {
     require(msg.sender != trader, "cannot self-liquidate");
     require(markPrice > 0, "mark price unset");
-    require(amount > 0, "amount=0");
     
     _applyFunding(trader);
     require(canLiquidate(trader), "position healthy");
@@ -142,26 +142,21 @@ function liquidate(address trader, uint256 amount) external virtual nonReentrant
 
     Position storage p = accounts[trader].position;
     uint256 sizeAbs = SignedMath.abs(p.size);
-    require(amount <= sizeAbs, "amount > position");
+    
+    // amount=0 表示全部清算
+    uint256 liqAmount = amount == 0 ? sizeAbs : Math.min(amount, sizeAbs);
 
     // 1. 执行市价平仓
     if (p.size > 0) {
-        // 多头 → 卖出平仓
-        Order memory closeOrder = Order(0, trader, false, 0, amount, amount, block.timestamp, 0);
+        Order memory closeOrder = Order(0, trader, false, 0, liqAmount, liqAmount, block.timestamp, 0);
         _matchLiquidationSell(closeOrder);
     } else {
-        // 空头 → 买入平仓
-        Order memory closeOrder = Order(0, trader, true, 0, amount, amount, block.timestamp, 0);
+        Order memory closeOrder = Order(0, trader, true, 0, liqAmount, liqAmount, block.timestamp, 0);
         _matchLiquidationBuy(closeOrder);
     }
     
-    // 2. H-1: 检查部分清算后是否仍不健康
-    if (amount < sizeAbs && canLiquidate(trader)) {
-        revert("must fully liquidate unhealthy position");
-    }
-    
-    // 3. 计算并转移清算费
-    uint256 notional = (amount * markPrice) / 1e18;
+    // 2. 计算并转移清算费
+    uint256 notional = (liqAmount * markPrice) / 1e18;
     uint256 fee = (notional * liquidationFeeBps) / 10_000;
     if (fee < minLiquidationFee) fee = minLiquidationFee;
     
@@ -170,7 +165,6 @@ function liquidate(address trader, uint256 amount) external virtual nonReentrant
         accounts[trader].freeMargin -= fee;
         accounts[msg.sender].freeMargin += fee;
     } else {
-        // 坏账情况：尽量支付
         uint256 available = accounts[trader].freeMargin;
         accounts[trader].freeMargin = 0;
         accounts[msg.sender].freeMargin += available;
@@ -179,7 +173,14 @@ function liquidate(address trader, uint256 amount) external virtual nonReentrant
         p.realizedPnl -= int256(debt);
     }
     
-    emit Liquidated(trader, msg.sender, fee, 0); // 在 event 定义中，此位参数名已规范化为 amount
+    emit Liquidated(trader, msg.sender, liqAmount, fee);
+    
+    // 3. H-1 安全检查：部分清算后验证
+    // 防止攻击者反复小额清算提取费用
+    Position storage pAfterLiq = accounts[trader].position;
+    if (pAfterLiq.size != 0) {
+        require(!canLiquidate(trader), "must fully liquidate unhealthy position");
+    }
 }
 ```
 
@@ -325,44 +326,127 @@ forge test --match-contract Day7IntegrationTest -vvv
 
 ---
 
-## 8) 小结 & 课程完成
+## 8) Indexer：索引清算事件
+
+Day 7 会触发 `Liquidated` 事件。
+
+### Step 1: 定义 Liquidation Schema
+
+在 `indexer/schema.graphql` 中添加：
+
+```graphql
+type Liquidation @entity {
+  id: ID!
+  trader: String!
+  liquidator: String!
+  amount: BigInt!
+  fee: BigInt!
+  timestamp: Int!
+  txHash: String!
+}
+```
+
+### Step 2: 实现 Liquidated Handler
+
+在 `indexer/src/EventHandlers.ts` 中添加：
+
+```typescript
+Exchange.Liquidated.handler(async ({ event, context }) => {
+    const entity: Liquidation = {
+        id: `${event.transaction.hash}-${event.logIndex}`,
+        trader: event.params.trader,
+        liquidator: event.params.liquidator,
+        amount: event.params.amount,
+        fee: event.params.fee,
+        timestamp: event.block.timestamp,
+        txHash: event.transaction.hash,
+    };
+    context.Liquidation.set(entity);
+    
+    // 清算后持仓应该归零或减少
+    const position = await context.Position.get(event.params.trader);
+    if (position) {
+        const newSize = position.size > 0n 
+            ? position.size - event.params.amount 
+            : position.size + event.params.amount;
+        context.Position.set({
+            ...position,
+            size: newSize,
+        });
+    }
+});
+```
+
+---
+
+## 9) 前端：危险预警与健康度显示
+
+### 9.1 保证金率（健康度）计算
+
+在 `frontend/components/Positions.tsx` 中添加：
+
+```typescript
+// 计算保证金率
+const marginRatio = useMemo(() => {
+    if (!position || position.size === 0n) return null;
+    
+    const marginBalance = freeMargin + unrealizedPnl;
+    const positionValue = Math.abs(Number(formatEther(position.size))) * markPrice;
+    
+    return (marginBalance / positionValue) * 100;  // 百分比
+}, [position, freeMargin, unrealizedPnl, markPrice]);
+```
+
+### 9.2 危险预警 Toast
+
+```typescript
+useEffect(() => {
+    // 维持保证金率 = 0.5% + 1.25% = 1.75%
+    const DANGER_THRESHOLD = 3;  // 3% 时开始警告
+    const CRITICAL_THRESHOLD = 2; // 2% 时严重警告
+    
+    if (marginRatio !== null && marginRatio < DANGER_THRESHOLD) {
+        if (marginRatio < CRITICAL_THRESHOLD) {
+            toast.error("⚠️ 即将被清算！请立即补充保证金", { duration: 10000 });
+        } else {
+            toast.warning("⚠️ 保证金不足，请及时补充", { duration: 5000 });
+        }
+    }
+}, [marginRatio]);
+```
+
+### 9.3 健康度可视化
+
+```tsx
+<div className="health-bar">
+    <div 
+        className={`fill ${marginRatio < 2 ? 'critical' : marginRatio < 5 ? 'warning' : 'healthy'}`}
+        style={{ width: `${Math.min(marginRatio || 0, 100)}%` }}
+    />
+    <span>{marginRatio?.toFixed(2)}%</span>
+</div>
+```
+
+---
+
+## 10) 小结 & 课程完成
 
 今天我们完成了"清算系统"，这是 DEX 风控的最后一环：
 
 - `canLiquidate()`：健康度判定
 - `liquidate()`：清算执行
 - `_matchLiquidationSell/Buy()`：市价平仓撮合
-- H-1 部分清算保护
-- 坏账处理机制
+- Indexer：索引 `Liquidated` 事件
+- 前端：危险预警 Toast 和健康度显示
 
 至此，7 天课程全部完成！系统具备：
 
-1. ✅ 资金管理（Day 1）
-2. ✅ 订单簿（Day 2）
-3. ✅ 撮合引擎（Day 3）
-4. ✅ 价格服务（Day 4）
-5. ✅ 数据索引（Day 5）
-6. ✅ 资金费率（Day 6）
-7. ✅ 清算系统（Day 7）
+1. ✅ 资金管理（Day 1）- 合约 + Indexer + 前端
+2. ✅ 订单簿（Day 2）- 合约 + Indexer + 前端
+3. ✅ 撮合引擎（Day 3）- 合约 + Indexer + 前端
+4. ✅ 价格服务（Day 4）- 合约 + Keeper + 前端
+5. ✅ K 线图表（Day 5）- Indexer + 前端
+6. ✅ 资金费率（Day 6）- 合约 + Indexer + 前端
+7. ✅ 清算系统（Day 7）- 合约 + Indexer + 前端
 
 **恭喜你完成了一个完整的永续合约 DEX！**
-
----
-
-## 9) 进阶开发（必须完成）
-
-1. **保险基金**
-   - 用利润积累保险基金。
-   - 坏账先从保险基金扣除。
-
-2. **自动去杠杆（ADL）**
-   - 当清算无法完成时触发 ADL。
-   - 按盈利排序强制平仓对手方。
-
-3. **清算者机器人**
-   - 编写 Keeper 扫描 `canLiquidate`。
-   - 自动触发清算赚取费用。
-
-4. **前端危险预警**
-   - 当接近清算线时显示 Toast 警告。
-   - 显示"距强平还剩 X 保证金"。

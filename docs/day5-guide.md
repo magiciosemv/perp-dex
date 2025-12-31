@@ -117,15 +117,29 @@ type LatestCandle @entity {
 
 ```typescript
 Exchange.MarginDeposited.handler(async ({ event, context }) => {
-    // TODO: 创建 MarginEvent 实体
-    // const entity: MarginEvent = {
-    //     id: `${event.transaction.hash}-${event.logIndex}`,
-    //     trader: event.params.trader,
-    //     amount: event.params.amount,
-    //     eventType: "DEPOSIT",
-    //     timestamp: event.block.timestamp,
-    // };
-    // context.MarginEvent.set(entity);
+    const entity: MarginEvent = {
+        id: `${event.transaction.hash}-${event.logIndex}`,
+        trader: event.params.trader,
+        amount: event.params.amount,
+        eventType: "DEPOSIT",
+        timestamp: event.block.timestamp,
+    };
+    context.MarginEvent.set(entity);
+});
+```
+
+#### 3.1.1 MarginWithdrawn Handler
+
+```typescript
+Exchange.MarginWithdrawn.handler(async ({ event, context }) => {
+    const entity: MarginEvent = {
+        id: `${event.transaction.hash}-${event.logIndex}`,
+        trader: event.params.trader,
+        amount: event.params.amount,
+        eventType: "WITHDRAW",
+        timestamp: event.block.timestamp,
+    };
+    context.MarginEvent.set(entity);
 });
 ```
 
@@ -133,18 +147,31 @@ Exchange.MarginDeposited.handler(async ({ event, context }) => {
 
 ```typescript
 Exchange.OrderPlaced.handler(async ({ event, context }) => {
-    // TODO: 创建 Order 实体
-    // const order: Order = {
-    //     id: event.params.id.toString(),
-    //     trader: event.params.trader,
-    //     isBuy: event.params.isBuy,
-    //     price: event.params.price,
-    //     initialAmount: event.params.amount,
-    //     amount: event.params.amount,
-    //     status: "OPEN",
-    //     timestamp: event.block.timestamp,
-    // };
-    // context.Order.set(order);
+    const order: Order = {
+        id: event.params.id.toString(),
+        trader: event.params.trader,
+        isBuy: event.params.isBuy,
+        price: event.params.price,
+        initialAmount: event.params.amount,
+        amount: event.params.amount,
+        status: "OPEN",
+        timestamp: event.block.timestamp,
+    };
+    context.Order.set(order);
+});
+```
+
+#### 3.2.1 OrderRemoved Handler
+
+```typescript
+Exchange.OrderRemoved.handler(async ({ event, context }) => {
+    const order = await context.Order.get(event.params.id.toString());
+    if (order) {
+        context.Order.set({
+            ...order,
+            status: order.amount === 0n ? "FILLED" : "CANCELLED",
+        });
+    }
 });
 ```
 

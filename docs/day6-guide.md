@@ -184,8 +184,9 @@ function setFundingParams(uint256 interval, int256 maxRatePerInterval) external 
 ```solidity
 function _unrealizedPnl(Position memory p) internal view returns (int256) {
     if (p.size == 0) return 0;
-    int256 pnlPerUnit = int256(markPrice) - int256(p.entryPrice);
-    return (pnlPerUnit * p.size) / 1e18;
+    int256 priceDiff = int256(markPrice) - int256(p.entryPrice);
+    if (p.size < 0) priceDiff = -priceDiff;  // 空头方向需要取反
+    return (priceDiff * int256(SignedMath.abs(p.size))) / 1e18;
 }
 ```
 
@@ -345,17 +346,114 @@ forge test --match-contract Day6FundingTest -vvv
 
 ---
 
-## 8) 小结 & 为 Day 7 铺垫
+## 8) Indexer：索引资金费率事件
+
+Day 6 会触发 `FundingUpdated` 和 `FundingPaid` 事件。
+
+### Step 1: 定义 FundingEvent Schema
+
+在 `indexer/schema.graphql` 中添加：
+
+```graphql
+type FundingEvent @entity {
+  id: ID!
+  eventType: String!  # "GLOBAL_UPDATE" 或 "USER_PAID"
+  trader: String      # 仅 USER_PAID 时有值
+  cumulativeRate: BigInt
+  payment: BigInt     # 仅 USER_PAID 时有值
+  timestamp: Int!
+}
+```
+
+### Step 2: 实现 Funding Event Handlers
+
+在 `indexer/src/EventHandlers.ts` 中添加：
+
+```typescript
+Exchange.FundingUpdated.handler(async ({ event, context }) => {
+    const entity: FundingEvent = {
+        id: `${event.transaction.hash}-${event.logIndex}`,
+        eventType: "GLOBAL_UPDATE",
+        trader: null,
+        cumulativeRate: event.params.cumulativeFundingRate,
+        payment: null,
+        timestamp: event.block.timestamp,
+    };
+    context.FundingEvent.set(entity);
+});
+
+Exchange.FundingPaid.handler(async ({ event, context }) => {
+    const entity: FundingEvent = {
+        id: `${event.transaction.hash}-${event.logIndex}`,
+        eventType: "USER_PAID",
+        trader: event.params.trader,
+        cumulativeRate: null,
+        payment: event.params.payment,
+        timestamp: event.block.timestamp,
+    };
+    context.FundingEvent.set(entity);
+});
+```
+
+---
+
+## 9) 前端：资金费显示与强平价格
+
+### 9.1 资金费率预估计算
+
+在 `frontend/store/exchangeStore.tsx` 的 `refresh` 函数中添加：
+
+```typescript
+// 在 refresh 函数中
+const m = Number(formatEther(markPrice));
+const i = Number(formatEther(indexPrice));
+const premiumIndex = (m - i) / i;
+const interestRate = 0.0001; // 0.01%
+const clampRange = 0.0005;   // 0.05%
+
+let diff = interestRate - premiumIndex;
+if (diff > clampRange) diff = clampRange;
+if (diff < -clampRange) diff = -clampRange;
+
+this.fundingRate = premiumIndex + diff;
+```
+
+### 9.2 强平价格计算
+
+在 `Positions.tsx` 中：
+
+```typescript
+// 多头强平价公式 (简化版)
+// LiqPrice = Entry - (Margin / Size) * (1 - MMR - LiqFee)
+const mmRatio = 0.005;   // 0.5% 维持保证金
+const liqFee = 0.0125;   // 1.25% 清算费
+
+const liqPrice = isLong
+    ? entryPrice * (1 - (margin / notional) * (1 - mmRatio - liqFee))
+    : entryPrice * (1 + (margin / notional) * (1 - mmRatio - liqFee));
+```
+
+### 9.3 资金费倒计时
+
+```typescript
+// 显示距下次结算时间
+const nextFunding = lastFundingTime + fundingInterval;
+const remaining = nextFunding - Math.floor(Date.now() / 1000);
+const minutes = Math.floor(remaining / 60);
+const seconds = remaining % 60;
+```
+
+---
+
+## 10) 小结 & 为 Day 7 铺垫
 
 今天我们完成了"资金费率机制"：
 
 - `settleFunding()`：全局费率计算（币安公式）
 - `_applyFunding()`：用户级资金费结算
 - `_unrealizedPnl()`：未实现盈亏计算
-- Keeper 定时触发结算
-
-至此，系统具备了：
-1. 资金管理 → 2. 订单簿 → 3. 撮合 → 4. 价格 → 5. 索引 → **6. 资金费率**
+- Indexer：索引 `FundingUpdated` 和 `FundingPaid` 事件
+- 前端：显示资金费率和强平价格
 
 Day 7 会在此基础上实现"清算系统"：
 
@@ -363,23 +461,3 @@ Day 7 会在此基础上实现"清算系统"：
 - `liquidate()`：清算执行
 - Keeper 扫描风险账户
 - 完整风控闭环测试
-
----
-
-## 9) 进阶开发（必须完成）
-
-1. **动态资金费率**
-   - 根据市场波动调整 clampRange。
-   - 高波动时收紧，低波动时放宽。
-
-2. **资金费率历史记录**
-   - 记录每次结算的 rate。
-   - 实现 `getFundingHistory()` 视图函数。
-
-3. **前端资金费预估**
-   - 显示"下次结算预估支付/收入"。
-   - 显示"距下次结算剩余时间"。
-
-4. **多 interval 支持**
-   - 支持 1h / 4h / 8h 等多种结算周期。
-   - 允许用户选择偏好。

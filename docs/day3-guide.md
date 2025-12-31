@@ -377,60 +377,195 @@ cd frontend && npm run dev
 
 ---
 
-## 8) 小结 & 为 Day 4 铺垫
+## 8) Indexer：索引成交与持仓
+
+Day 3 的核心是 `TradeExecuted` 事件，我们需要在 Indexer 中处理成交记录和持仓更新。
+
+### Step 1: 定义 Trade 和 Position Schema
+
+在 `indexer/schema.graphql` 中添加：
+
+```graphql
+type Trade @entity {
+  id: ID!
+  buyer: String!
+  seller: String!
+  price: BigInt!
+  amount: BigInt!
+  timestamp: Int!
+  txHash: String!
+  buyOrderId: BigInt!
+  sellOrderId: BigInt!
+}
+
+type Position @entity {
+  id: ID!  # trader address
+  trader: String!
+  size: BigInt!
+  entryPrice: BigInt!
+  realizedPnl: BigInt!
+}
+```
+
+### Step 2: 实现 TradeExecuted Handler
+
+在 `indexer/src/EventHandlers.ts` 中添加：
+
+```typescript
+Exchange.TradeExecuted.handler(async ({ event, context }) => {
+    // 1. 创建成交记录
+    const trade: Trade = {
+        id: `${event.transaction.hash}-${event.logIndex}`,
+        buyer: event.params.buyer,
+        seller: event.params.seller,
+        price: event.params.price,
+        amount: event.params.amount,
+        timestamp: event.block.timestamp,
+        txHash: event.transaction.hash,
+        buyOrderId: event.params.buyOrderId,
+        sellOrderId: event.params.sellOrderId,
+    };
+    context.Trade.set(trade);
+
+    // 2. 更新买卖双方订单的剩余量
+    const buyOrder = await context.Order.get(event.params.buyOrderId.toString());
+    if (buyOrder) {
+        const newAmount = buyOrder.amount - event.params.amount;
+        context.Order.set({
+            ...buyOrder,
+            amount: newAmount,
+            status: newAmount === 0n ? "FILLED" : "OPEN",
+        });
+    }
+
+    const sellOrder = await context.Order.get(event.params.sellOrderId.toString());
+    if (sellOrder) {
+        const newAmount = sellOrder.amount - event.params.amount;
+        context.Order.set({
+            ...sellOrder,
+            amount: newAmount,
+            status: newAmount === 0n ? "FILLED" : "OPEN",
+        });
+    }
+
+    // 3. 更新持仓（见 updatePosition 辅助函数）
+    await updatePosition(context, event.params.buyer, true, event.params.amount, event.params.price);
+    await updatePosition(context, event.params.seller, false, event.params.amount, event.params.price);
+});
+```
+
+### Step 3: 实现 updatePosition 辅助函数
+
+```typescript
+async function updatePosition(context: any, trader: string, isBuy: boolean, amount: bigint, price: bigint) {
+    const existingPosition = await context.Position.get(trader);
+    let position = existingPosition ? { ...existingPosition } : {
+        id: trader,
+        trader,
+        size: 0n,
+        entryPrice: 0n,
+        realizedPnl: 0n,
+    };
+
+    const signedAmount = isBuy ? amount : -amount;
+    const currentSize = position.size;
+
+    // 加仓逻辑
+    if (currentSize === 0n || (currentSize > 0n && isBuy) || (currentSize < 0n && !isBuy)) {
+        const totalSize = currentSize + signedAmount;
+        const absTotalSize = totalSize > 0n ? totalSize : -totalSize;
+        const absCurrentSize = currentSize > 0n ? currentSize : -currentSize;
+
+        if (absTotalSize > 0n) {
+            position.entryPrice = (absCurrentSize * position.entryPrice + amount * price) / absTotalSize;
+        }
+        position.size = totalSize;
+    } else {
+        // 平仓逻辑
+        const absCurrentSize = currentSize > 0n ? currentSize : -currentSize;
+        const closeAmount = amount > absCurrentSize ? absCurrentSize : amount;
+        let pnl = currentSize > 0n
+            ? ((price - position.entryPrice) * closeAmount) / (10n ** 18n)
+            : ((position.entryPrice - price) * closeAmount) / (10n ** 18n);
+
+        position.realizedPnl += pnl;
+        position.size += signedAmount;
+        if (position.size === 0n) position.entryPrice = 0n;
+    }
+    context.Position.set(position);
+}
+```
+
+---
+
+## 9) 前端：成交列表与持仓组件
+
+### 9.1 RecentTrades 组件（从 Indexer 获取）
+
+在 `frontend/components/RecentTrades.tsx` 或 `frontend/store/exchangeStore.tsx` 中：
+
+```typescript
+const GET_RECENT_TRADES = gql`
+  query {
+    Trade(limit: 20, orderBy: timestamp, orderDirection: desc) {
+      id
+      buyer
+      seller
+      price
+      amount
+      timestamp
+    }
+  }
+`;
+
+// 在组件中使用
+const trades = result.data.Trade.map((t: any) => ({
+    price: formatEther(t.price),
+    amount: formatEther(t.amount),
+    time: new Date(t.timestamp * 1000).toLocaleTimeString(),
+    side: BigInt(t.buyOrderId) > BigInt(t.sellOrderId) ? 'buy' : 'sell',
+}));
+```
+
+### 9.2 Positions 组件（从 Indexer 或链上获取）
+
+```typescript
+// 方式 A：从 Indexer 获取
+const GET_POSITION = gql`
+  query GetPosition($trader: String!) {
+    Position(where: { trader: $trader }) {
+      size
+      entryPrice
+      realizedPnl
+    }
+  }
+`;
+
+// 方式 B：从链上获取（更实时）
+const pos = await publicClient.readContract({
+    address: EXCHANGE_ADDRESS,
+    abi: EXCHANGE_ABI,
+    functionName: 'getPosition',
+    args: [account],
+});
+```
+
+> [!TIP]
+> 持仓数据建议从链上获取以确保最新，成交历史则从 Indexer 获取以提升性能。
+
+---
+
+## 10) 小结 & 为 Day 4 铺垫
 
 今天我们完成了"撮合引擎"的核心逻辑：
 
 - `_executeTrade`：撮合后的统一入口，触发事件、更新双方持仓
 - `_updatePosition`：处理加仓、减仓、反向开仓三种场景
 - `realizedPnl`：平仓时结算已实现盈亏，同步更新 `freeMargin`
-
-至此，用户可以：
-1. 充值保证金 → 2. 下单 → 3. 成交 → 4. 持仓变化 → 5. 平仓获利/亏损
+- Indexer：索引成交记录和持仓变化
 
 Day 4 会在此基础上引入"价格服务"：
 
 - `updateIndexPrice()`：外部预言机/Keeper 推送价格
 - `_calculateMarkPrice()`：三价取中计算标记价格
 - 标记价格将用于计算"未实现盈亏"与"强平价格"
-
----
-
-## 9) 可选挑战 / 扩展（不影响主线）
-
-1. **给 `TradeExecuted` 事件补断言**
-   - 在 `Day3Matching.t.sol` 中新增 `vm.expectEmit(...)`，校验事件参数（buyer, seller, price, amount）
-
-2. **测试极端边界**
-   - 下单量刚好等于对手盘：`amount == head.amount`
-   - 反向开仓后立刻再反向：`5 long → 10 sell → 5 short → 3 buy`
-
-3. **验证加权平均价精度**
-   - 用 Fuzz 测试验证：任意两次加仓后，`entryPrice` 始终在两次成交价之间
-
-4. **前端增强**
-   - 在 Positions 组件中显示 `realizedPnl` 字段
-   - 在 Recent Trades 中高亮自己参与的成交
-
----
-
-## 9) 进阶：前端持仓刷新（Alignment）
-
-在 `useExchange.tsx` 中，我们需要在 `refresh` 函数中通过 `Promise.all` 并发读取保证金和持仓数据，以确保 UI 状态的实时性。
-
-```typescript
-const [marginBal, pos] = await Promise.all([
-    publicClient.readContract({
-        address: EXCHANGE_ADDRESS,
-        abi: EXCHANGE_ABI,
-        functionName: 'margin',
-        args: [account],
-    }),
-    publicClient.readContract({
-        address: EXCHANGE_ADDRESS,
-        abi: EXCHANGE_ABI,
-        functionName: 'getPosition',
-        args: [account],
-    }),
-]);
-```

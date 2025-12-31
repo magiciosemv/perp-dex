@@ -225,7 +225,36 @@ function _matchBuy(Order memory incoming, uint256 hintId) internal virtual {
 }
 ```
 
-`_matchSell` 同理（方向相反）。
+`_matchSell` 同理（方向相反）：
+
+```solidity
+function _matchSell(Order memory incoming, uint256 hintId) internal virtual {
+    while (incoming.amount > 0 && bestBuyId != 0) {
+        Order storage head = orders[bestBuyId];
+        if (incoming.price > head.price) break;
+
+        uint256 matched = Math.min(incoming.amount, head.amount);
+        _executeTrade(head.trader, incoming.trader, head.id, incoming.id, matched, head.price);
+
+        incoming.amount -= matched;
+        head.amount -= matched;
+
+        if (head.amount == 0) {
+            uint256 nextHead = head.next;
+            uint256 removedId = head.id;
+            pendingOrderCount[head.trader]--;
+            delete orders[bestBuyId];
+            bestBuyId = nextHead;
+            emit OrderRemoved(removedId);
+        }
+    }
+
+    if (incoming.amount > 0) {
+        _insertSell(incoming, hintId);
+        _checkWorstCaseMargin(incoming.trader);
+    }
+}
+```
 
 ---
 
@@ -393,22 +422,139 @@ forge test --match-contract Day2OrderbookTest -vvv
 
 ## 6) 常见问题（排错思路）
 
-1. **`hint not last` 一直触发**：你没有正确校验/维护“同价尾部”，或插入逻辑没有把新单放到同价末尾。
+1. **`hint not last` 一直触发**：你没有正确校验/维护"同价尾部"，或插入逻辑没有把新单放到同价末尾。
 2. **链表断了/循环了**：检查 `incoming.next`、`bestBuyId/bestSellId`、`orders[prev].next` 的赋值顺序。
-3. **撤单后链表顺序错**：`_removeOrderFromList` 没处理“删除头节点”的情况，或没正确连接 `prev.next`。
+3. **撤单后链表顺序错**：`_removeOrderFromList` 没处理"删除头节点"的情况，或没正确连接 `prev.next`。
 
 ---
 
-## 9) 进阶：前端订单簿同步（Alignment）
+## 7) Indexer：索引订单事件
 
-在 `useExchange.tsx` 中，由于合约只返回 `bestBuyId`，前端需要手动遍历链表来展示完整的买卖盘数据。
+Day 2 的合约会触发 `OrderPlaced` 和 `OrderRemoved` 事件，我们需要在 Indexer 中处理它们。
+
+### Step 1: 定义 Order Schema
+
+在 `indexer/schema.graphql` 中添加（Day 1 已有 MarginEvent）：
+
+```graphql
+type Order @entity {
+  id: ID!
+  trader: String!
+  isBuy: Boolean!
+  price: BigInt!
+  initialAmount: BigInt!
+  amount: BigInt!
+  status: String!  # "OPEN", "FILLED", "CANCELLED"
+  timestamp: Int!
+}
+```
+
+### Step 2: 实现 Order Event Handlers
+
+在 `indexer/src/EventHandlers.ts` 中添加：
+
+```typescript
+Exchange.OrderPlaced.handler(async ({ event, context }) => {
+    const order: Order = {
+        id: event.params.id.toString(),
+        trader: event.params.trader,
+        isBuy: event.params.isBuy,
+        price: event.params.price,
+        initialAmount: event.params.amount,
+        amount: event.params.amount,
+        status: "OPEN",
+        timestamp: event.block.timestamp,
+    };
+    context.Order.set(order);
+});
+
+Exchange.OrderRemoved.handler(async ({ event, context }) => {
+    const order = await context.Order.get(event.params.id.toString());
+    if (order) {
+        context.Order.set({
+            ...order,
+            status: order.amount === 0n ? "FILLED" : "CANCELLED",
+        });
+    }
+});
+```
+
+### Step 3: 验证 Indexer
+
+```graphql
+query {
+  Order(where: { status: "OPEN" }, orderBy: price, orderDirection: desc) {
+    id
+    trader
+    isBuy
+    price
+    amount
+  }
+}
+```
+
+---
+
+## 8) 前端：订单簿与下单组件
+
+### 8.1 OrderForm 组件关键代码
+
+`frontend/components/OrderForm.tsx` 中的下单逻辑：
+
+```typescript
+const handleSubmit = async () => {
+    // 1. 输入验证
+    if (isNaN(price) || isNaN(amount) || price <= 0 || amount <= 0) {
+        setError("请输入有效的价格和数量");
+        return;
+    }
+    
+    // 2. 转换为 Wei
+    const priceWei = parseEther(price.toString());
+    const amountWei = parseEther(amount.toString());
+    
+    // 3. 调用合约
+    const hash = await walletClient.writeContract({
+        address: EXCHANGE_ADDRESS,
+        abi: EXCHANGE_ABI,
+        functionName: 'placeOrder',
+        args: [isBuy, priceWei, amountWei, 0n],  // hintId = 0
+    });
+    
+    await publicClient.waitForTransactionReceipt({ hash });
+    refresh();
+};
+```
+
+### 8.2 从 Indexer 获取订单簿（推荐）
+
+相比链上遍历，Indexer 查询更高效：
+
+```typescript
+const GET_ORDERBOOK = gql`
+  query GetOrderbook {
+    buyOrders: Order(where: { status: "OPEN", isBuy: true }, orderBy: price, orderDirection: desc) {
+      id price amount
+    }
+    sellOrders: Order(where: { status: "OPEN", isBuy: false }, orderBy: price, orderDirection: asc) {
+      id price amount
+    }
+  }
+`;
+```
+
+> [!TIP]
+> 使用 Indexer 查询订单比链上遍历链表快 10-100 倍，且不消耗 Gas。
+
+### 8.3 链上遍历（备用方案）
+
+如果 Indexer 不可用，可以直接从链上遍历：
 
 ```typescript
 const loadOrderChain = async (headId: bigint) => {
     const list = [];
     let curr = headId;
-    let limit = 0;
-    while (curr !== 0n && limit < 50) {
+    while (curr !== 0n && list.length < 50) {
         const order = await publicClient.readContract({
             address: EXCHANGE_ADDRESS,
             abi: EXCHANGE_ABI,
@@ -417,11 +563,7 @@ const loadOrderChain = async (headId: bigint) => {
         });
         list.push(order);
         curr = order.next;
-        limit++;
     }
     return list;
 };
 ```
-
-> [!TIP]
-> 这种“逐个读取”在生产环境压力较大，通常会配合 Indexer 或批量读取合约来优化速度。

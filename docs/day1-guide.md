@@ -379,7 +379,95 @@ UI 验收路径（建议按顺序）：
 
 ---
 
-## 8) 小结 & 为 Day2 铺垫
+## 8) Indexer 入门：索引保证金事件
+
+在完成合约功能后，我们需要将链上事件索引到数据库，以便前端快速查询。本课程使用 **Envio** 作为 Indexer 框架。
+
+### Step 1: 理解 Indexer 架构
+
+```
+链上事件 (Event Logs) → Indexer 解析 → 数据库存储 → GraphQL API → 前端查询
+```
+
+配置文件位置：
+- `indexer/config.yaml`：定义监听的合约和事件
+- `indexer/schema.graphql`：定义数据模型
+- `indexer/src/EventHandlers.ts`：事件处理逻辑
+
+### Step 2: 定义 MarginEvent Schema
+
+打开 `indexer/schema.graphql`，添加：
+
+```graphql
+type MarginEvent @entity {
+  id: ID!
+  trader: String!
+  amount: BigInt!
+  eventType: String!  # "DEPOSIT" 或 "WITHDRAW"
+  timestamp: Int!
+  txHash: String!
+}
+```
+
+### Step 3: 实现 Event Handlers
+
+修改 `indexer/src/EventHandlers.ts`：
+
+```typescript
+import { Exchange, MarginEvent } from "generated";
+
+Exchange.MarginDeposited.handler(async ({ event, context }) => {
+    const entity: MarginEvent = {
+        id: `${event.transaction.hash}-${event.logIndex}`,
+        trader: event.params.trader,
+        amount: event.params.amount,
+        eventType: "DEPOSIT",
+        timestamp: event.block.timestamp,
+        txHash: event.transaction.hash,
+    };
+    context.MarginEvent.set(entity);
+});
+
+Exchange.MarginWithdrawn.handler(async ({ event, context }) => {
+    const entity: MarginEvent = {
+        id: `${event.transaction.hash}-${event.logIndex}`,
+        trader: event.params.trader,
+        amount: event.params.amount,
+        eventType: "WITHDRAW",
+        timestamp: event.block.timestamp,
+        txHash: event.transaction.hash,
+    };
+    context.MarginEvent.set(entity);
+});
+```
+
+### Step 4: 启动 Indexer
+
+```bash
+cd indexer
+pnpm install
+pnpm dev
+```
+
+验证 GraphQL playground：`http://localhost:8080/graphql`
+
+```graphql
+query {
+  MarginEvent(limit: 10, orderBy: timestamp, orderDirection: desc) {
+    trader
+    amount
+    eventType
+    timestamp
+  }
+}
+```
+
+> [!TIP]
+> Day 1 只需确保 Indexer 能正确监听 `MarginDeposited` 和 `MarginWithdrawn` 事件。后续 Day 2-7 会逐步添加更多事件处理。
+
+---
+
+## 9) 小结 & 为 Day2 铺垫
 
 今天我们完成了“资金进出 + 余额读取”这一最小闭环：
 

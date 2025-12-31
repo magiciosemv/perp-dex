@@ -91,12 +91,9 @@ forge test --match-contract Day3MatchingTest -vvv
 
 ```solidity
 function updateIndexPrice(uint256 newIndexPrice) external virtual onlyRole(OPERATOR_ROLE) {
-    // TODO: 请实现此函数
-    // 步骤:
-    // 1. indexPrice = newIndexPrice;
-    // 2. uint256 newMarkPrice = _calculateMarkPrice(newIndexPrice);
-    // 3. markPrice = newMarkPrice;
-    // 4. emit MarkPriceUpdated(newIndexPrice, newMarkPrice);
+    indexPrice = newIndexPrice;
+    markPrice = _calculateMarkPrice(newIndexPrice);
+    emit MarkPriceUpdated(markPrice, indexPrice);
 }
 ```
 
@@ -122,23 +119,31 @@ function updateIndexPrice(uint256 newIndexPrice) external virtual onlyRole(OPERA
 
 ```solidity
 function _calculateMarkPrice(uint256 indexPrice_) internal view virtual returns (uint256) {
-    if (bestBuyId == 0 || bestSellId == 0) return indexPrice_;
+    uint256 bestBid = bestBuyId == 0 ? 0 : orders[bestBuyId].price;
+    uint256 bestAsk = bestSellId == 0 ? 0 : orders[bestSellId].price;
 
-    uint256 bestBid = orders[bestBuyId].price;
-    uint256 bestAsk = orders[bestSellId].price;
-    
-    // Median of (bestBid, bestAsk, indexPrice)
-    uint256 median;
-    if ((bestBid <= bestAsk && bestAsk <= indexPrice_) || (indexPrice_ <= bestAsk && bestAsk <= bestBid)) {
-        median = bestAsk;
-    } else if ((bestAsk <= bestBid && bestBid <= indexPrice_) || (indexPrice_ <= bestBid && bestBid <= bestAsk)) {
-        median = bestBid;
-    } else {
-        median = indexPrice_;
+    // If both empty, return index
+    if (bestBid == 0 && bestAsk == 0) {
+        return indexPrice_;
     }
 
+    // If one side empty, use index for that side
+    if (bestBid == 0) bestBid = indexPrice_;
+    if (bestAsk == 0) bestAsk = indexPrice_;
+
+    // Median of (Bid, Ask, Index) using bubble sort
+    uint256 a = bestBid;
+    uint256 b = bestAsk;
+    uint256 c = indexPrice_;
+    
+    if (a > b) (a, b) = (b, a);
+    if (b > c) (b, c) = (c, b);
+    if (a > b) (a, b) = (b, a);
+    
+    uint256 median = b;
+
     // ±5% Deviation Clamp
-    uint256 maxDeviation = (indexPrice_ * 500) / 10000;
+    uint256 maxDeviation = (indexPrice_ * 500) / 10_000;
     if (median > indexPrice_ + maxDeviation) return indexPrice_ + maxDeviation;
     if (indexPrice_ > maxDeviation && median < indexPrice_ - maxDeviation) return indexPrice_ - maxDeviation;
 
