@@ -15,17 +15,13 @@
 
 ---
 
-## 2) 前置知识 / Day0 回顾
+## 2) 前置知识
 
 需要你具备：
 
 - Solidity 基础语法：`mapping`、`struct`、`msg.sender`、`msg.value`、`require`、事件（`event`/`emit`）。
 - Foundry 基础：`forge test`、`vm.prank`、`vm.expectRevert`。
 - 原生币金额单位：1 MON = `1e18` wei（Solidity 里常写作 `1 ether`，只是 `1e18` 的单位名；前端用 `parseEther/formatEther` 做 18 位精度转换）。
-
-注意：
-
-- 本地 anvil 测试环境里工具函数仍沿用 `ether/parseEther` 命名，但在本课程语境下统一视为 **MON**。
 
 本课程约定：
 
@@ -60,7 +56,7 @@
 
 ---
 
-### Step 2: 实现 ViewModule 的 `margin()`（以及顺手补全其它 view）
+### Step 2: 实现 ViewModule 的 `margin()`
 
 目标：让前端/测试能读取保证金余额，且不再 `revert("Not implemented")`。
 
@@ -70,23 +66,18 @@
 
 需要实现的函数：
 
-- `getOrder(uint256 id)`：从 `orders[id]` 返回订单结构体
 - `margin(address trader)`：返回 `accounts[trader].freeMargin`
-- `getPosition(address trader)`：返回 `accounts[trader].position`（课程后续统一使用这个函数名）
+
+> [!NOTE]
+> `getOrder` 和 `getPosition` 会在后续 Day 中实现：
+> - Day 2 实现 `getOrder`（订单簿需要）
+> - Day 3 实现 `getPosition`（持仓更新需要）
 
 参考实现（可直接照写）：
 
 ```solidity
-function getOrder(uint256 id) external view virtual returns (Order memory) {
-    return orders[id];
-}
-
 function margin(address trader) external view virtual returns (uint256) {
     return accounts[trader].freeMargin;
-}
-
-function getPosition(address trader) external view virtual returns (Position memory) {
-    return accounts[trader].position;
 }
 ```
 
@@ -281,15 +272,6 @@ Day1 先不引入“锁定保证金/挂单占用/维持保证金”等概念，�
 
 `transfer` 固定 2300 gas，可能因为对方是合约地址而失败；`call` 更通用。
 
-### 5.4 为什么 Day1 就放 `_applyFunding` / `_ensureWithdrawKeepsMaintenance`？
-
-这是“为后续铺路”的接口预留：
-
-- Day5 会实现资金费结算，提现/下单前需要先结算，避免套利与状态不一致
-- Day4/Day6 会实现价格与清算，提现需要确保不会突破维持保证金
-
-Day1 先把调用链搭好，但不在 Day1 实现复杂公式（避免一次性做太多）。
-
 ---
 
 ## 6) 测试与验证
@@ -303,27 +285,7 @@ cd contract
 forge test --match-contract Day1MarginTest -vvv
 ```
 
-通过标准：
-
-- 4 个测试全部 `PASS`
-
-如果你想只跑单文件也可以：
-
-```bash
-forge test --match-path test/Day1Margin.t.sol -vvv
-```
-
----
-
 ### 6.2 前端验证（必须）
-
-方式 A：完整一键启动（包含 indexer/keeper）
-
-```bash
-./quickstart.sh
-```
-
-方式 B：Day1 最小启动（只跑本地链 + 部署 + 前端）
 
 终端 1（启动 anvil 并部署，会自动写入 `frontend/.env.local`）：
 
@@ -335,8 +297,8 @@ forge test --match-path test/Day1Margin.t.sol -vvv
 
 ```bash
 cd frontend
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 打开：
@@ -445,7 +407,7 @@ Exchange.MarginWithdrawn.handler(async ({ event, context }) => {
 
 ```bash
 cd indexer
-pnpm install
+ppnpm install
 pnpm dev
 ```
 

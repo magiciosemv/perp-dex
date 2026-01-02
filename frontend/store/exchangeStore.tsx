@@ -3,7 +3,7 @@ import { makeAutoObservable, runInAction } from 'mobx';
 import { Address, Hash, parseAbiItem, parseEther, formatEther } from 'viem';
 import { EXCHANGE_ABI } from '../onchain/abi';
 import { EXCHANGE_ADDRESS, EXCHANGE_DEPLOY_BLOCK } from '../onchain/config';
-import { chain, getFallbackWalletClient, getWalletClient, publicClient, fallbackAccount, ACCOUNTS } from '../onchain/client';
+import { chain, getWalletClient, publicClient, fallbackAccount, ACCOUNTS } from '../onchain/client';
 import { OrderBookItem, OrderSide, OrderType, PositionSnapshot, Trade, CandleData } from '../types';
 import { client, GET_CANDLES, GET_RECENT_TRADES, GET_POSITIONS, GET_OPEN_ORDERS } from './IndexerClient';
 
@@ -49,7 +49,7 @@ class ExchangeStore {
   myOrders: OpenOrder[] = [];
   syncing = false;
   error?: string;
-  walletClient = getWalletClient() || getFallbackWalletClient();
+  walletClient = getWalletClient();
 
   constructor() {
     makeAutoObservable(this);
@@ -112,7 +112,7 @@ class ExchangeStore {
   switchAccount = () => {
     this.accountIndex = (this.accountIndex + 1) % ACCOUNTS.length;
     const newAccount = ACCOUNTS[this.accountIndex];
-    this.walletClient = getFallbackWalletClient(newAccount);
+    this.walletClient = getWalletClient(newAccount);
     runInAction(() => {
       this.account = newAccount.address;
       this.refresh();

@@ -67,7 +67,30 @@ forge test --match-contract Day2OrderbookTest -vvv
 
 ---
 
-### Step 3: 实现 `_executeTrade`（撮合后的统一入口）
+### Step 3: 实现 `getPosition`（持仓查询视图函数）
+
+修改：
+
+- `contract/src/modules/ViewModule.sol`
+
+Day 3 需要通过 `getPosition` 来查询用户持仓状态，前端和后续的清算逻辑都会用到。
+
+参考实现：
+
+```solidity
+function getPosition(address trader) external view virtual returns (Position memory) {
+    return accounts[trader].position;
+}
+```
+
+预期行为：
+
+- `exchange.getPosition(alice)` 返回 Alice 的持仓详情
+- 返回结构体包含 `size`（正=多头，负=空头）、`entryPrice`、`realizedPnl`
+
+---
+
+### Step 4: 实现 `_executeTrade`（撮合后的统一入口）
 
 修改：
 
@@ -103,7 +126,7 @@ function _executeTrade(
 
 ---
 
-### Step 4: 实现 `_updatePosition`（加仓 / 减仓 / 反向）
+### Step 5: 实现 `_updatePosition`（加仓 / 减仓 / 反向）
 
 仍在：
 
@@ -253,7 +276,7 @@ if (closing == existingAbs) {
 }
 ```
 
-### Step 9: 前端持仓实时更新
+### Step 6: 前端持仓实时更新
 
 为了在 UI 上看到 Alice 和 Bob 的持仓变化，我们需要更新 `frontend/hooks/useExchange.tsx` 中的 `refresh` 函数，使其能够调用我们在 Day 1 实现的 `getPosition` 视图函数。
 
@@ -315,13 +338,11 @@ forge test --match-test testClosingPositionRealizesPnl -vvv
 启动本地环境：
 
 ```bash
-# 方式 A：完整启动
-./quickstart.sh
-
-# 方式 B：最小启动（终端1）
+# 终端1（启动 anvil 并部署）
 ./scripts/run-anvil-deploy.sh
-# 终端2
-cd frontend && npm run dev
+
+# 终端2（启动前端）
+cd frontend && pnpm dev
 ```
 
 打开 `http://localhost:3000`，按以下路径验证：

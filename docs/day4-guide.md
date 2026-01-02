@@ -343,7 +343,7 @@ cast send <EXCHANGE_ADDRESS> "updateIndexPrice(uint256)" "2500000000000000000000
 
 **验收路径 3：Keeper 自动更新**
 
-1. 启动 Keeper 服务：`cd keeper && npm start`
+1. 启动 Keeper 服务：`cd keeper && pnpm start`
 2. 观察日志输出价格更新信息
 3. 刷新前端，确认价格变化
 

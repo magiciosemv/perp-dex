@@ -29,15 +29,8 @@ export const publicClient = createPublicClient({
 
 export const fallbackAccount = ACCOUNTS[0];
 
-export const getWalletClient = () => {
-  if (typeof window === 'undefined' || !(window as any).ethereum) return null;
-  return createWalletClient({
-    chain,
-    transport: custom((window as any).ethereum),
-  });
-};
 
-export const getFallbackWalletClient = (account = fallbackAccount) => {
+export const getWalletClient = (account = fallbackAccount) => {
   return createWalletClient({
     chain,
     transport: http(RPC_URL),

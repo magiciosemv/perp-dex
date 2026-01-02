@@ -15,6 +15,9 @@ export const OrderForm: React.FC = observer(() => {
   const [depositAmount, setDepositAmount] = useState('0.1');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [status, setStatus] = useState<string | undefined>();
+  const [isDepositing, setIsDepositing] = useState(false);
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [isOrdering, setIsOrdering] = useState(false);
   const store = useExchangeStore();
   const { account, margin, markPrice, placeOrder, deposit, withdraw, connectWallet, syncing, error } =
     store;
@@ -26,6 +29,7 @@ export const OrderForm: React.FC = observer(() => {
   const handleOrder = async (side: OrderSide) => {
     try {
       setStatus(undefined);
+      setIsOrdering(true);
       const parsedAmount = parseFloat(amount);
       if (isNaN(parsedAmount) || parsedAmount <= 0) {
         throw new Error('Please enter a valid amount');
@@ -49,26 +53,34 @@ export const OrderForm: React.FC = observer(() => {
       setStatus(`${side === OrderSide.BUY ? 'Long' : 'Short'} order submitted`);
     } catch (e) {
       setStatus((e as Error)?.message || 'Order failed');
+    } finally {
+      setIsOrdering(false);
     }
   };
 
   const handleDeposit = async () => {
     try {
       setStatus(undefined);
+      setIsDepositing(true);
       await deposit(depositAmount);
       setStatus('Deposit complete');
     } catch (e) {
       setStatus((e as Error)?.message || 'Deposit failed');
+    } finally {
+      setIsDepositing(false);
     }
   };
 
   const handleWithdraw = async () => {
     try {
       setStatus(undefined);
+      setIsWithdrawing(true);
       await withdraw(withdrawAmount || '0');
       setStatus('Withdraw complete');
     } catch (e) {
       setStatus((e as Error)?.message || 'Withdraw failed');
+    } finally {
+      setIsWithdrawing(false);
     }
   };
 
@@ -120,9 +132,10 @@ export const OrderForm: React.FC = observer(() => {
             />
             <button
               onClick={account ? handleDeposit : connectWallet}
-              className="px-3 py-1 rounded bg-nebula-teal text-black font-semibold text-xs hover:bg-cyan-300 w-full"
+              disabled={isDepositing}
+              className="px-3 py-1 rounded bg-nebula-teal text-black font-semibold text-xs hover:bg-cyan-300 w-full disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {account ? 'Deposit' : 'Connect'}
+              {isDepositing ? 'Pending...' : (account ? 'Deposit' : 'Connect')}
             </button>
           </div>
         </div>
@@ -141,9 +154,10 @@ export const OrderForm: React.FC = observer(() => {
             />
             <button
               onClick={account ? handleWithdraw : connectWallet}
-              className="px-3 py-1 rounded bg-[#1E2330] text-gray-200 font-semibold text-xs hover:bg-[#252b3b] w-full"
+              disabled={isWithdrawing}
+              className="px-3 py-1 rounded bg-[#1E2330] text-gray-200 font-semibold text-xs hover:bg-[#252b3b] w-full disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {account ? 'Withdraw' : 'Connect'}
+              {isWithdrawing ? 'Pending...' : (account ? 'Withdraw' : 'Connect')}
             </button>
           </div>
         </div>
@@ -236,17 +250,17 @@ export const OrderForm: React.FC = observer(() => {
       <div className="grid grid-cols-2 gap-3 mt-2 shrink-0">
         <button
           onClick={() => handleOrder(OrderSide.BUY)}
-          disabled={syncing}
+          disabled={syncing || isOrdering}
           className="bg-nebula-teal hover:bg-cyan-400 text-black font-bold py-3 rounded-lg transition-colors flex flex-col items-center justify-center disabled:opacity-60"
         >
-          <span className="text-sm">{syncing ? 'Syncing…' : 'Buy / Long'}</span>
+          <span className="text-sm">{isOrdering ? 'Pending...' : 'Buy / Long'}</span>
         </button>
         <button
           onClick={() => handleOrder(OrderSide.SELL)}
-          disabled={syncing}
+          disabled={syncing || isOrdering}
           className="bg-nebula-pink hover:bg-fuchsia-400 text-white font-bold py-3 rounded-lg transition-colors flex flex-col items-center justify-center disabled:opacity-60"
         >
-          <span className="text-sm">{syncing ? 'Syncing…' : 'Sell / Short'}</span>
+          <span className="text-sm">{isOrdering ? 'Pending...' : 'Sell / Short'}</span>
         </button>
       </div>
 

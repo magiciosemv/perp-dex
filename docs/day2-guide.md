@@ -20,7 +20,7 @@
 Day2 是建立在 Day1 之上的，请先确认：
 
 - `deposit()` / `withdraw(uint256)` 已实现并能通过 `Day1MarginTest`
-- `margin(address)` / `getOrder(uint256)` 等 view 已实现（Day2 测试会读取订单与余额）
+- `margin(address)` 视图函数已实现（Day2 测试会读取余额）
 
 你可以先跑：
 
@@ -75,7 +75,30 @@ forge test --match-contract Day1MarginTest -vvv
 
 ---
 
-### Step 3: 实现 `_startFromHint`（Day2 的关键）
+### Step 3: 实现 `getOrder`（订单查询视图函数）
+
+修改：
+
+- `contract/src/modules/ViewModule.sol`
+
+Day 2 需要通过 `getOrder` 来查询订单详情，测试和前端都会用到这个函数。
+
+参考实现：
+
+```solidity
+function getOrder(uint256 id) external view virtual returns (Order memory) {
+    return orders[id];
+}
+```
+
+预期行为：
+
+- `exchange.getOrder(1)` 返回 ID 为 1 的订单详情
+- 如果订单不存在，返回空结构体（`id = 0`）
+
+---
+
+### Step 4: 实现 `_startFromHint`（Day2 的关键）
 
 修改：
 
@@ -121,7 +144,7 @@ function _startFromHint(bool isBuy, uint256 price, uint256 hintId)
 
 ---
 
-### Step 4: 实现 `_insertBuy` / `_insertSell`（把订单“入簿”）
+### Step 5: 实现 `_insertBuy` / `_insertSell`（把订单“入簿”）
 
 修改：
 
@@ -184,7 +207,7 @@ function _insertSell(Order memory incoming, uint256 hintId) internal virtual {
 
 ---
 
-### Step 5: 实现 `_matchBuy` / `_matchSell`（Day2 用“无成交时入簿”就够）
+### Step 6: 实现 `_matchBuy` / `_matchSell`（Day2 用“无成交时入簿”就够）
 
 修改：
 
@@ -258,7 +281,7 @@ function _matchSell(Order memory incoming, uint256 hintId) internal virtual {
 
 ---
 
-### Step 6: 实现 `placeOrder`（把 Day2 路径串起来）
+### Step 7: 实现 `placeOrder`（把 Day2 路径串起来）
 
 修改：
 
@@ -295,7 +318,7 @@ function placeOrder(bool isBuy, uint256 price, uint256 amount, uint256 hintId)
 
 ---
 
-### Step 7: 实现撤单 `cancelOrder` + 链表删除 `_removeOrderFromList`
+### Step 8: 实现撤单 `cancelOrder` + 链表删除 `_removeOrderFromList`
 
 修改：
 
@@ -336,7 +359,7 @@ function _removeOrderFromList(uint256 head, uint256 targetId) internal returns (
 
 ---
 
-### Step 8: Day2 的保证金检查怎么写（先写“骨架”，不阻塞主线）
+### Step 9: Day2 的保证金检查怎么写（先写“骨架”，不阻塞主线）
 
 你会在：
 
