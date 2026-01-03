@@ -47,7 +47,6 @@ abstract contract ExchangeStorage is AccessControl, ReentrancyGuard {
     struct Position {
         int256 size;          // 持仓数量 (正=多头, 负=空头)
         uint256 entryPrice;   // 入场价格 (加权平均)
-        int256 realizedPnl;   // 已实现盈亏
     }
 
     /// @notice 账户结构体

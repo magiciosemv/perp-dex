@@ -1,6 +1,6 @@
 # Day 3 - 撮合与持仓更新（Matching & Positions）
 
-本节目标：在 Day 2 的订单簿基础上，完成成交后的核心状态更新：撮合触发 `_executeTrade`，并正确维护 `Position.size` / `entryPrice` / `realizedPnl`，将已实现盈亏计入 `freeMargin`。
+本节目标：在 Day 2 的订单簿基础上，完成成交后的核心状态更新：撮合触发 `_executeTrade`，并正确维护 `Position.size` / `entryPrice`，将已实现盈亏直接计入 `freeMargin`。
 
 ---
 
@@ -35,13 +35,13 @@ forge test --match-contract Day2OrderbookTest -vvv
 - `forge test --match-contract Day3MatchingTest -vvv` 全部通过
 - 部分成交后订单 `amount` 正确减少
 - 双方持仓 `size` 更新正确（多头为正、空头为负）
-- 反向平仓后 `realizedPnl` 正确，并同步更新 `freeMargin`
+- 反向平仓后盈亏正确结算到 `freeMargin`
 
 ---
 
-## 4) 开发步骤（边理解边写代码）
+## 4) 开发步骤
 
-### Step 1: 读测试，先把规则写清楚
+### Step 1
 
 打开：
 
@@ -51,12 +51,12 @@ forge test --match-contract Day2OrderbookTest -vvv
 
 1. **部分成交更新持仓**：成交后订单剩余数量正确
 2. **价格不交叉不成交**：买价 < 最优卖价时不成交
-3. **反向平仓结算 PnL**：`realizedPnl` 与 `freeMargin` 必须更新
+3. **反向平仓结算 PnL**：盈亏直接更新到 `freeMargin`
 4. **taker 跨多档吃单**：多档成交后订单簿清空
 
 ---
 
-### Step 2: 明确成交价规则（maker 价成交）
+### Step 2
 
 当前 `_matchBuy/_matchSell` 会把成交价设为 **链表头订单的价格**：
 
@@ -67,7 +67,7 @@ forge test --match-contract Day2OrderbookTest -vvv
 
 ---
 
-### Step 3: 实现 `getPosition`（持仓查询视图函数）
+### Step 3: 实现 `getPosition`
 
 修改：
 
@@ -86,11 +86,27 @@ function getPosition(address trader) external view virtual returns (Position mem
 预期行为：
 
 - `exchange.getPosition(alice)` 返回 Alice 的持仓详情
-- 返回结构体包含 `size`（正=多头，负=空头）、`entryPrice`、`realizedPnl`
+- 返回结构体包含 `size`（正=多头，负=空头）、`entryPrice`
+
+**验证命令**（使用 `cast` 查询）：
+
+```bash
+# 查询 Alice 的持仓（返回 size, entryPrice）
+cast call $EXCHANGE "getPosition(address)(int256,uint256)" \
+  0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+  --rpc-url http://127.0.0.1:8545
+
+# 示例输出（Alice 持有 1 ETH 多头 @ 1500）：
+# 1000000000000000000    ← size = 1e18 (1 ETH 多头)
+# 1500000000000000000000 ← entryPrice = 1500e18
+```
+
+> [!TIP]
+> **Order ≠ Position**：挂单（Order）只是等待成交的意愿；仓位（Position）是已成交的实际持仓。只有当订单被撮合后，才会更新 Position。
 
 ---
 
-### Step 4: 实现 `_executeTrade`（撮合后的统一入口）
+### Step 4: 实现 `_executeTrade`
 
 修改：
 
@@ -175,8 +191,7 @@ function _updatePosition(
         : int256(p.entryPrice) - int256(tradePrice);
     int256 pnl = (pnlPerUnit * int256(closing)) / int256(SCALE);
 
-    p.realizedPnl += pnl;
-
+    // 盈亏直接结算到 freeMargin（无需单独记录 realizedPnl）
     int256 newMargin = int256(accounts[trader].freeMargin) + pnl;
     if (newMargin < 0) accounts[trader].freeMargin = 0;
     else accounts[trader].freeMargin = uint256(newMargin);
@@ -236,7 +251,7 @@ newEntry = (oldSize × oldEntry + addSize × tradePrice) / (oldSize + addSize)
 uint256 weighted = (existingAbs * p.entryPrice + amount * tradePrice) / newAbs;
 ```
 
-### 5.3 realizedPnl 的符号处理
+### 5.3 平仓盈亏的符号处理
 
 盈亏方向取决于**持仓方向**与**价格变动方向**：
 
@@ -375,7 +390,7 @@ cd frontend && pnpm dev
 
 ## 7) 常见问题（排错思路）
 
-1. **`realizedPnl` 不对**
+1. **平仓盈亏计算不对**
    - 检查多头/空头的 PnL 公式符号是否相反
    - 确认 `pnlPerUnit` 的计算顺序（多头：成交价-入场价；空头：入场价-成交价）
 
@@ -424,7 +439,6 @@ type Position @entity {
   trader: String!
   size: BigInt!
   entryPrice: BigInt!
-  realizedPnl: BigInt!
 }
 ```
 
@@ -485,7 +499,6 @@ async function updatePosition(context: any, trader: string, isBuy: boolean, amou
         trader,
         size: 0n,
         entryPrice: 0n,
-        realizedPnl: 0n,
     };
 
     const signedAmount = isBuy ? amount : -amount;
@@ -508,8 +521,7 @@ async function updatePosition(context: any, trader: string, isBuy: boolean, amou
         let pnl = currentSize > 0n
             ? ((price - position.entryPrice) * closeAmount) / (10n ** 18n)
             : ((position.entryPrice - price) * closeAmount) / (10n ** 18n);
-
-        position.realizedPnl += pnl;
+        // 盈亏直接记录到事件或跳过（合约已结算到 freeMargin）
         position.size += signedAmount;
         if (position.size === 0n) position.entryPrice = 0n;
     }
@@ -557,7 +569,6 @@ const GET_POSITION = gql`
     Position(where: { trader: $trader }) {
       size
       entryPrice
-      realizedPnl
     }
   }
 `;
@@ -582,7 +593,7 @@ const pos = await publicClient.readContract({
 
 - `_executeTrade`：撮合后的统一入口，触发事件、更新双方持仓
 - `_updatePosition`：处理加仓、减仓、反向开仓三种场景
-- `realizedPnl`：平仓时结算已实现盈亏，同步更新 `freeMargin`
+- 平仓盈亏：平仓时结算已实现盈亏，直接更新到 `freeMargin`
 - Indexer：索引成交记录和持仓变化
 
 Day 4 会在此基础上引入"价格服务"：

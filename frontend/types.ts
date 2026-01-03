@@ -38,7 +38,6 @@ export enum OrderType {
 export interface PositionSnapshot {
   size: bigint;
   entryPrice: bigint;
-  realizedPnl: bigint;
 }
 
 export interface DisplayPosition {

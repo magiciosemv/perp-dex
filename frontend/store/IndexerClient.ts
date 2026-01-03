@@ -60,7 +60,6 @@ export const GET_POSITIONS = `
       trader
       size
       entryPrice
-      realizedPnl
     }
   }
 `;
