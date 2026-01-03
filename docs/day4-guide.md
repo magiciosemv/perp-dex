@@ -42,7 +42,7 @@ forge test --match-contract Day3MatchingTest -vvv
 
 ---
 
-## 4) 开发步骤（边理解边写代码）
+## 4) 开发步骤
 
 ### Step 1: 读测试，先把规则写清楚
 
@@ -151,15 +151,6 @@ function _calculateMarkPrice(uint256 indexPrice_) internal view virtual returns 
 }
 ```
 
-辅助函数 `_median`（如果不存在需自行实现）：
-
-```solidity
-function _median(uint256 a, uint256 b, uint256 c) internal pure returns (uint256) {
-    // TODO: 返回三个数的中位数
-    // 提示：可以用排序或条件判断实现
-}
-```
-
 ---
 
 ### Step 5: 实现 Keeper 服务（TypeScript）
@@ -174,7 +165,7 @@ Keeper 需要定期执行以下操作：
 2. 转换为合约精度（`1e18`）
 3. 调用 `updateIndexPrice()` 推送到链上
 
-**方案：使用 Pyth Network（推荐，精度更稳健）**
+**使用 Pyth Network**
 
 ```typescript
 // 1. 获取价格
@@ -207,31 +198,45 @@ const priceWei = p * (10n ** BigInt(18 + expo));
 ---
 
 ### Step 6: 前端价格展示
+
 确认以下组件已正确显示价格。如果不显示，说明 Keeper 未运行或合约函数未实现：
 
 - **Header 组件**：显示 Index Price 和 Mark Price
 - **MarketStats 组件**：显示价格相关统计
 
-前端应通过更新 `useExchange.tsx` 中的 `refresh` 函数来同步价格：
+修改文件：`frontend/store/exchangeStore.tsx`
+
+在 `refresh` 函数中（约第 340 行），找到读取 `markPrice` 的代码块，在 `Promise.all` 中增加 `indexPrice` 的读取：
 
 ```typescript
-// 在 refresh 函数的 Promise.all 中添加价格查询
-const [marginBal, pos, mPrice, iPrice] = await Promise.all([
-    // ... 原有的 margin 和 position 查询
+// 在 refresh 函数内
+// 修改前：
+// const [mp, im] = await Promise.all([...]);
+
+// 修改后：
+const [mp, ip, im] = await Promise.all([
     publicClient.readContract({
         address: EXCHANGE_ADDRESS,
         abi: EXCHANGE_ABI,
         functionName: 'markPrice',
     }),
-    publicClient.readContract({
+    publicClient.readContract({          // [新增]
         address: EXCHANGE_ADDRESS,
         abi: EXCHANGE_ABI,
         functionName: 'indexPrice',
     }),
+    publicClient.readContract({
+        address: EXCHANGE_ADDRESS,
+        abi: EXCHANGE_ABI,
+        functionName: 'initialMarginBps',
+    }),
 ]);
 
-setMarkPrice(mPrice as bigint);
-setIndexPrice(iPrice as bigint);
+runInAction(() => {
+    this.markPrice = mp;
+    this.indexPrice = ip;                // [新增]
+    this.initialMarginBps = im;
+});
 ```
 
 ---

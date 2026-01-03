@@ -126,8 +126,9 @@ contract Day7IntegrationTest is ExchangeFixture {
         
         // 6. Verify Bad Debt
         MonadPerpExchange.Position memory pb = exchange.getPosition(bob);
-        // Realized PnL should be negative
-        assertTrue(pb.realizedPnl < 0, "Bob should have bad debt");
+        assertEq(pb.size, 0, "Bob position should be closed");
+        // Bad debt: Bob's margin is drained (loss exceeded deposit)
+        assertEq(exchange.margin(bob), 0, "Bob should have bad debt (margin drained)");
     }
 }
 
