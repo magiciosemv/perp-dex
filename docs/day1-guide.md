@@ -185,7 +185,8 @@ const m = await publicClient.readContract({
   address,
   functionName: 'margin',
   args: [this.account],
-} as any) as bigint;
+  authorizationList: []
+}) as bigint;
 ```
 
 ---
@@ -199,11 +200,11 @@ deposit = async (ethAmount: string) => {
   if (!this.walletClient || !this.account) throw new Error('Connect wallet before depositing');
   const hash = await this.walletClient.writeContract({
     account: this.account,
+    chain: this.walletClient.chain,
     address: this.ensureContract(),
     abi: EXCHANGE_ABI,
     functionName: 'deposit',
     value: parseEther(ethAmount),
-    chain: undefined,
   } as any);
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
   if (receipt.status !== 'success') throw new Error('Transaction failed');
@@ -223,12 +224,12 @@ withdraw = async (amount: string) => {
   const parsed = parseEther(amount || '0');
   const hash = await this.walletClient.writeContract({
     account: this.account,
+    chain: this.walletClient.chain,
     address: this.ensureContract(),
     abi: EXCHANGE_ABI,
     functionName: 'withdraw',
-    args: [parseEther(amount)],
-    chain: undefined,
-  } as any);
+    args: [parsed],
+  });
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
   if (receipt.status !== 'success') throw new Error('Transaction failed');
   await this.refresh();

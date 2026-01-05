@@ -2,9 +2,8 @@
 // This file is updated automatically by run-anvil-deploy.sh
 // Run `./run-anvil-deploy.sh` or `./quickstart.sh` to regenerate
 
-import ExchangeABIJson from './ExchangeABI.json';
-import { Abi } from 'viem';
+import { EXCHANGE_ABI as ABI } from './ExchangeABI';
 
-export const EXCHANGE_ABI = ExchangeABIJson as Abi;
+export const EXCHANGE_ABI = ABI;
 
 export type ExchangeAbi = typeof EXCHANGE_ABI;

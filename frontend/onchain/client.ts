@@ -1,6 +1,7 @@
-import { createPublicClient, createWalletClient, custom, defineChain, http } from 'viem';
+import { createPublicClient, createWalletClient, custom, defineChain, http, publicActions, walletActions } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { CHAIN_ID, RPC_URL } from './config';
+import { anvil } from 'viem/chains';
 
 const TEST_PK_1 = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'; // anvil index 1 (Bob)
 const TEST_PK_2 = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a'; // anvil index 2 (Carol)
@@ -12,15 +13,7 @@ export const ACCOUNTS = [
   privateKeyToAccount(TEST_PK_2),
 ];
 
-export const chain = defineChain({
-  id: CHAIN_ID,
-  name: 'Anvil Fork',
-  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: {
-    default: { http: [RPC_URL] },
-    public: { http: [RPC_URL] },
-  },
-});
+export const chain = anvil
 
 export const publicClient = createPublicClient({
   chain,
@@ -35,5 +28,5 @@ export const getWalletClient = (account = fallbackAccount) => {
     chain,
     transport: http(RPC_URL),
     account,
-  });
+  }).extend(publicActions).extend(walletActions);
 };
