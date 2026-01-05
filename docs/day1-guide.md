@@ -359,7 +359,44 @@ UI 验收路径（建议按顺序）：
 - `indexer/schema.graphql`：定义数据模型
 - `indexer/src/EventHandlers.ts`：事件处理逻辑
 
-### Step 2: 定义 MarginEvent Schema
+### Step 2: 配置 config.yaml
+
+打开 `indexer/config.yaml`，配置 Indexer 监听的合约和事件：
+
+```yaml
+name: monad-exchange-indexer
+description: Indexer for Monad Perpetual Exchange events
+
+field_selection:
+  transaction_fields:
+    - hash
+
+contracts:
+  - name: Exchange
+    handler: src/EventHandlers.ts
+    events:
+      - event: MarginDeposited(address indexed trader, uint256 amount)
+      - event: MarginWithdrawn(address indexed trader, uint256 amount)
+
+networks:
+  - id: 31337  # Anvil local network
+    start_block: 0
+    rpc_config:
+      url: http://127.0.0.1:8545
+    contracts:
+      - name: Exchange
+        address:
+          - 0x5FbDB2315678afecb367f032d93F642f64180aa3
+```
+
+> [!NOTE]
+> - `field_selection.transaction_fields: [hash]`：配置获取交易哈希，用于 `event.transaction.hash`
+> - `id: 31337` 是 Anvil 本地网络的 Chain ID
+> - `rpc_config.url` 是 Anvil 的 RPC 地址（Anvil 不支持 HyperSync，需要配置 RPC）
+> - `address` 需要与实际部署的合约地址一致，可在 `frontend/.env.local` 中查看
+> - 后续 Day 会逐步添加更多事件（OrderPlaced、TradeExecuted 等）
+
+### Step 3: 定义 MarginEvent Schema
 
 打开 `indexer/schema.graphql`，添加：
 
@@ -374,7 +411,20 @@ type MarginEvent @entity {
 }
 ```
 
-### Step 3: 实现 Event Handlers
+### Step 4: 生成类型定义 (Codegen)
+
+在编写 EventHandlers 之前，必须先根据 `config.yaml` 和 `schema.graphql` 生成 TypeScript 类型定义：
+
+```bash
+cd indexer
+pnpm install
+pnpm codegen
+```
+
+> [!IMPORTANT]
+> 每当修改了 `config.yaml` 或 `schema.graphql`，都必须重新运行 `pnpm codegen`，否则 TypeScript 会报类型错误。
+
+### Step 5: 实现 Event Handlers
 
 修改 `indexer/src/EventHandlers.ts`：
 
@@ -406,26 +456,47 @@ Exchange.MarginWithdrawn.handler(async ({ event, context }) => {
 });
 ```
 
-### Step 4: 启动 Indexer
+### Step 6: 启动 Indexer
 
 ```bash
 cd indexer
-ppnpm install
 pnpm dev
 ```
 
-验证 GraphQL playground：`http://localhost:8080/graphql`
+### Step 7: 测试 Indexer
 
-```graphql
-query {
-  MarginEvent(limit: 10, orderBy: timestamp, orderDirection: desc) {
-    trader
-    amount
-    eventType
-    timestamp
-  }
-}
-```
+1. **确保服务都在运行**：
+   - Anvil: `./scripts/run-anvil-deploy.sh`
+   - Frontend: `cd frontend && pnpm dev`
+   - Indexer: `cd indexer && pnpm dev`
+
+2. **在前端触发事件**：
+   - 打开 http://localhost:3000
+   - 连接钱包（Alice）
+   - 执行一次 Deposit（如 0.1 ETH）
+   - 执行一次 Withdraw（如 0.05 ETH）
+
+3. **验证 GraphQL 查询**：
+
+   打开 http://localhost:8080/v1/graphql，执行：
+
+   ```graphql
+   query {
+     MarginEvent(limit: 10, order_by: {timestamp: desc}) {
+       id
+       trader
+       amount
+       eventType
+       timestamp
+       txHash
+     }
+   }
+   ```
+
+4. **预期结果**：
+   - 应该看到 2 条记录：一条 `DEPOSIT`，一条 `WITHDRAW`
+   - `trader` 应该是 Alice 的地址
+   - `amount` 应该与你操作的金额一致（单位：wei）
 
 > [!TIP]
 > Day 1 只需确保 Indexer 能正确监听 `MarginDeposited` 和 `MarginWithdrawn` 事件。后续 Day 2-7 会逐步添加更多事件处理。
@@ -445,93 +516,6 @@ Day2 会在此基础上引入"订单簿与下单"：
 - `placeOrder` / `cancelOrder`
 - 买卖盘链表插入、价格优先级
 - 最坏情况保证金检查（挂单占用的保证金需求）
-
----
-
-## 9) 架构演进：从直接读合约到 Indexer
-
-### Day1-3：直接读合约（简单但低效）
-
-```typescript
-// 当前前端 store 的做法
-const m = await publicClient.readContract({
-    abi: EXCHANGE_ABI,
-    address,
-    functionName: 'margin',
-    args: [this.account],
-} as any) as bigint;
-
-// 订单簿：遍历链表（~100行代码）
-await Promise.all([
-    this.loadOrderChain(bestBid),
-    this.loadOrderChain(bestAsk)
-]);
-```
-
-**问题**：
-- 每次刷新都要遍历订单链表（O(n) 复杂度）
-- 无法实时更新，只能轮询
-- 订单簿深度限制（最多20条）
-- 无法查询历史成交记录
-
----
-
-### Day5+：使用 Indexer（高效且实时）
-
-#### 合约已有的事件
-```solidity
-// ExchangeStorage.sol 中已定义
-event MarginDeposited(address indexed trader, uint256 amount);
-event MarginWithdrawn(address indexed trader, uint256 amount);
-event OrderPlaced(uint256 indexed id, address indexed trader, bool isBuy, uint256 price, uint256 amount);
-event OrderRemoved(uint256 indexed id);
-event TradeExecuted(uint256 indexed buyOrderId, uint256 indexed sellOrderId, uint256 price, uint256 amount, address buyer, address seller);
-event MarkPriceUpdated(uint256 markPrice, uint256 indexPrice);
-event FundingUpdated(int256 cumulativeFundingRate, uint256 timestamp);
-```
-
-#### Indexer 维护状态
-```
-链上事件 → Envio Indexer 解析 → PostgreSQL 存储 → GraphQL API → 前端查询
-```
-
-#### Day5 优化后的前端代码
-```typescript
-// 不再需要遍历链表
-const { data } = await query(GET_ORDER_BOOK, {
-    variables: { limit: 20 }
-});
-
-// 实时订阅订单更新
-const subscription = subscribe(ORDER_UPDATES, {
-    onData: (order) => {
-        // 实时更新订单簿
-    }
-});
-
-// 查询历史成交
-const { data: trades } = await query(GET_TRADES, {
-    variables: { trader: this.account, limit: 50 }
-});
-```
-
-**优势**：
-- ✅ 订单簿由 Indexer 聚合，前端只需查询
-- ✅ WebSocket 实时推送，无需轮询
-- ✅ 完整历史记录（K线、成交）
-- ✅ 减少前端计算，提升性能
-
----
-
-### Day1-3 vs Day5+ 对比
-
-| 功能 | Day1-3（当前） | Day5+（优化后） |
-|------|---------------|-----------------|
-| **订单簿** | 前端遍历链表（复杂） | Indexer 维护（简单） |
-| **成交记录** | 无法查询 | Indexer 聚合 |
-| **价格** | 定期读合约 | Indexer 跟踪 event |
-| **持仓** | 直接读合约 | Indexer 计算 |
-| **实时性** | 轮询（4秒一次） | WebSocket 推送 |
 
 ---
 

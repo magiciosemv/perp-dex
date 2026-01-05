@@ -110,9 +110,8 @@ EOF
     ABI_DEST_TS="$ROOT_DIR/frontend/onchain/ExchangeABI.ts"
     if [[ -f "$ABI_SOURCE" ]]; then
       # Extract only the 'abi' field from the JSON and wrap it in a TS export
-      echo "export const EXCHANGE_ABI = " > "$ABI_DEST_TS"
-      jq '.abi' "$ABI_SOURCE" >> "$ABI_DEST_TS"
-      echo " as const;" >> "$ABI_DEST_TS"
+      # Use printf to avoid extra newlines between ] and as const
+      printf "export const EXCHANGE_ABI = %s as const;\n" "$(jq -c '.abi' "$ABI_SOURCE")" > "$ABI_DEST_TS"
       echo "已生成 ABI 到 frontend/onchain/ExchangeABI.ts"
     fi
     
