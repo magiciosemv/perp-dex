@@ -232,12 +232,25 @@ class ExchangeStore {
       });
 
       if (this.account) {
-        const m = await publicClient.readContract({
-          abi: EXCHANGE_ABI,
-          address,
-          functionName: 'margin',
-          args: [this.account],
-        } as any) as bigint;
+        // ============================================
+        // Day 1 TODO: 读取用户保证金余额
+        // ============================================
+        // TODO: Day 1 - 使用 publicClient.readContract 读取保证金余额
+        // 步骤:
+        // 1. 调用 publicClient.readContract 读取 margin 函数
+        // 2. 传入参数 args: [this.account]
+        // 3. 使用 runInAction 更新 this.margin
+
+        // 参考代码:
+        // const m = await publicClient.readContract({
+        //   abi: EXCHANGE_ABI,
+        //   address,
+        //   functionName: 'margin',
+        //   args: [this.account],
+        // } as any) as bigint;
+        // runInAction(() => { this.margin = m; });
+
+        const m = 0n; // TODO: 移除这行，实现上面的代码
 
         // Position fetching from Indexer to be implemented in Day 5
         let pos: PositionSnapshot = { size: 0n, entryPrice: 0n };
@@ -325,36 +338,36 @@ class ExchangeStore {
     }
   };
 
+  // ============================================
+  // Day 1 TODO: 实现充值函数
+  // ============================================
   deposit = async (ethAmount: string) => {
-    if (!this.walletClient || !this.account) throw new Error('Connect wallet before depositing');
-    const value = parseEther(ethAmount || '0');
-    const hash = await this.walletClient.writeContract({
-      account: this.account,
-      address: this.ensureContract(),
-      abi: EXCHANGE_ABI,
-      functionName: 'deposit',
-      value: parseEther(ethAmount),
-      chain: undefined,
-    } as any);
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
-    if (receipt.status !== 'success') throw new Error('Transaction failed');
-    await this.refresh();
+    // TODO: Day 1 - 实现充值功能
+    // 步骤:
+    // 1. 检查钱包是否连接: if (!this.walletClient || !this.account) throw new Error(...)
+    // 2. 调用合约的 deposit 函数，传入 value
+    // 3. 等待交易回执: await publicClient.waitForTransactionReceipt({ hash })
+    // 4. 检查交易状态: if (receipt.status !== 'success') throw new Error(...)
+    // 5. 刷新数据: await this.refresh()
+
+    // 提示: 参考下面的 withdraw 函数结构，但 deposit 需要 value 参数
+    throw new Error('deposit 功能尚未实现，请完成 Day1 练习');
   };
 
+  // ============================================
+  // Day 1 TODO: 实现提现函数
+  // ============================================
   withdraw = async (amount: string) => {
-    if (!this.walletClient || !this.account) throw new Error('Connect wallet before withdrawing');
-    const parsed = parseEther(amount || '0');
-    const hash = await this.walletClient.writeContract({
-      account: this.account,
-      address: this.ensureContract(),
-      abi: EXCHANGE_ABI,
-      functionName: 'withdraw',
-      args: [parseEther(amount)],
-      chain: undefined,
-    } as any);
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
-    if (receipt.status !== 'success') throw new Error('Transaction failed');
-    await this.refresh();
+    // TODO: Day 1 - 实现提现功能
+    // 步骤:
+    // 1. 检查钱包是否连接: if (!this.walletClient || !this.account) throw new Error(...)
+    // 2. 解析金额: const parsed = parseEther(amount || '0')
+    // 3. 调用合约的 withdraw 函数，传入 args: [parsed]
+    // 4. 等待交易回执: await publicClient.waitForTransactionReceipt({ hash })
+    // 5. 检查交易状态: if (receipt.status !== 'success') throw new Error(...)
+    // 6. 刷新数据: await this.refresh()
+
+    throw new Error('withdraw 功能尚未实现，请完成 Day1 练习');
   };
 
   placeOrder = async (params: { side: OrderSide; orderType?: OrderType; price?: string; amount: string; hintId?: string }) => {

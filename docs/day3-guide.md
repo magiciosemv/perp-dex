@@ -296,41 +296,66 @@ if (closing == existingAbs) {
 
 ### Step 6: 前端持仓实时更新
 
-为了在 UI 上看到 Alice 和 Bob 的持仓变化，我们需要更新 `frontend/hooks/useExchange.tsx` 中的 `refresh` 函数，使其能够调用我们在 Day 1 实现的 `getPosition` 视图函数。
+为了在 UI 上看到 Alice 和 Bob 的持仓变化，我们需要更新 `frontend/store/exchangeStore.tsx` 中的 `refresh` 函数，使其能够调用我们在 Day 1 实现的 `getPosition` 视图函数。
+
+修改 `refresh` 方法，添加持仓读取逻辑：
 
 ```typescript
-// 更新 refresh 函数
-const refresh = useCallback(async () => {
-    if (!EXCHANGE_ADDRESS || !account) return;
-    setSyncing(true);
+// 在 refresh() 方法中，替换现有的 position 读取代码
+refresh = async () => {
     try {
-        const [marginBal, pos] = await Promise.all([
-            publicClient.readContract({
-                address: EXCHANGE_ADDRESS,
-                abi: EXCHANGE_ABI,
-                functionName: 'margin',
-                args: [account],
-            }),
-            publicClient.readContract({
-                address: EXCHANGE_ADDRESS,
-                abi: EXCHANGE_ABI,
-                functionName: 'getPosition',
-                args: [account],
-            }),
+        runInAction(() => {
+            this.syncing = true;
+            this.error = undefined;
+        });
+        const address = this.ensureContract();
+        const [mark, index, bestBid, bestAsk, imBps] = await Promise.all([
+            publicClient.readContract({ abi: EXCHANGE_ABI, address, functionName: 'markPrice' } as any) as Promise<bigint>,
+            publicClient.readContract({ abi: EXCHANGE_ABI, address, functionName: 'indexPrice' } as any) as Promise<bigint>,
+            publicClient.readContract({ abi: EXCHANGE_ABI, address, functionName: 'bestBuyId' } as any) as Promise<bigint>,
+            publicClient.readContract({ abi: EXCHANGE_ABI, address, functionName: 'bestSellId' } as any) as Promise<bigint>,
+            publicClient.readContract({ abi: EXCHANGE_ABI, address, functionName: 'initialMarginBps' } as any) as Promise<bigint>,
         ]);
-        setMargin(marginBal as bigint);
-        setPosition(pos as PositionSnapshot);
-        setError(undefined);
-    } catch (e: any) {
-        console.error(e);
+        runInAction(() => {
+            this.markPrice = mark;
+            this.indexPrice = index;
+            this.initialMarginBps = imBps;
+        });
+
+        if (this.account) {
+            const [m, pos] = await Promise.all([
+                publicClient.readContract({
+                    abi: EXCHANGE_ABI,
+                    address,
+                    functionName: 'margin',
+                    args: [this.account],
+                } as any) as Promise<bigint>,
+                publicClient.readContract({
+                    abi: EXCHANGE_ABI,
+                    address,
+                    functionName: 'getPosition',
+                    args: [this.account],
+                } as any) as Promise<PositionSnapshot>,
+            ]);
+
+            runInAction(() => {
+                this.margin = m;
+                this.position = pos;
+            });
+        }
+
+        // 订单簿等其他数据保持不变...
+    } catch (e) {
+        runInAction(() => (this.error = (e as Error)?.message || 'Failed to sync exchange data'));
     } finally {
-        setSyncing(false);
+        runInAction(() => (this.syncing = false));
     }
-}, [account]);
+};
 ```
 
 > [!NOTE]
 > 使用 `Promise.all` 可以并发请求多个数据，显著提升页面加载速度。
+> 所有状态更新都在 `runInAction()` 中包装，确保 MobX 能够正确追踪依赖。
 
 ---
 

@@ -33,7 +33,7 @@
 
 - 合约：`deposit/withdraw` 可用；`margin()` 可读。
 - 测试：`contract/test/Day1Margin.t.sol` 全部通过。
-- 前端：完善 `useExchange.tsx`，能在 UI 上完成一次充值 + 一次提现，并看到余额变化。
+- 前端：无需修改，直接使用现有功能，在 UI 上完成一次充值 + 一次提现，并看到余额变化。
 
 ---
 
@@ -156,96 +156,98 @@ function withdraw(uint256 amount) external virtual nonReentrant {
 
 ---
 
-### Step 5: 前端实现 (useExchange.tsx)
+### Step 5: 前端实现 (exchangeStore.tsx)
 
-为了让前端按钮真正可用，你需要完善 React Hook 里的合约调用逻辑。
+现在轮到在前端实现代码了！`frontend/store/exchangeStore.tsx` 中有三个TODO函数需要你完成。
 
-修改文件：
+**修改文件**：
 
-- `frontend/hooks/useExchange.tsx`
+- `frontend/store/exchangeStore.tsx`
 
-你需要实现三个核心函数：
+---
 
-1. `refresh()`: 读取链上余额
-2. `deposit(amount)`: 调用合约充值
-3. `withdraw(amount)`: 调用合约提现
+### 5.1 实现 `refresh()` 中的保证金读取
 
-关键点：
-
-- 使用 `viem` 的 `publicClient.readContract` 读取数据。
-- 使用 `walletClient.writeContract` 发送交易。
-- 交易后等待回执 `waitForTransactionReceipt`，然后刷新数据。
-
-参考实现：
+在 `refresh()` 方法中，找到这段代码（约第234行附近）：
 
 ```typescript
-// 1. 刷新余额
-const refresh = useCallback(async () => {
-    if (!EXCHANGE_ADDRESS || !account) return;
-    setSyncing(true);
-    try {
-        const marginBal = await publicClient.readContract({
-            address: EXCHANGE_ADDRESS,
-            abi: EXCHANGE_ABI,
-            functionName: 'margin' as const, // 注意 as const 解决类型推断
-            args: [account],
-        }) as bigint;
-        setMargin(marginBal);
-        setError(undefined);
-    } catch (e: any) {
-        console.error(e);
-    } finally {
-        setSyncing(false);
-    }
-}, [account]);
-
-// 2. 充值
-const deposit = useCallback(async (amount: string) => {
-    try {
-        const walletClient = await getWalletClient();
-        if (!walletClient) throw new Error('No wallet connected');
-        
-        const hash = await walletClient.writeContract({
-            address: EXCHANGE_ADDRESS!,
-            abi: EXCHANGE_ABI,
-            functionName: 'deposit',
-            value: parseEther(amount),
-            account: walletClient.account,
-            chain: chain,
-        });
-        await publicClient.waitForTransactionReceipt({ hash });
-        await refresh();
-    } catch (e: any) {
-        setError(e.message || 'Deposit failed');
-    }
-}, [refresh]);
-
-// 3. 提现
-const withdraw = useCallback(async (amount: string) => {
-    try {
-        const walletClient = await getWalletClient();
-        if (!walletClient) throw new Error('No wallet connected');
-
-        const hash = await walletClient.writeContract({
-            address: EXCHANGE_ADDRESS!,
-            abi: EXCHANGE_ABI,
-            functionName: 'withdraw',
-            args: [parseEther(amount)],
-            account: walletClient.account,
-            chain: chain,
-        });
-        await publicClient.waitForTransactionReceipt({ hash });
-        await refresh();
-    } catch (e: any) {
-        setError(e.message || 'Withdraw failed');
-    }
-}, [refresh]);
+// ============================================
+// Day 1 TODO: 读取用户保证金余额
+// ============================================
+const m = 0n; // TODO: 移除这行，实现上面的代码
 ```
 
-预期行为：
+替换为：
 
-- 刷新页面后，Console 不再报错 `TODO`。
-- Deposit/Withdraw 操作能拉起钱包签名，并成功上链。
+```typescript
+const m = await publicClient.readContract({
+  abi: EXCHANGE_ABI,
+  address,
+  functionName: 'margin',
+  args: [this.account],
+} as any) as bigint;
+```
+
+---
+
+### 5.2 实现 `deposit()` 函数
+
+找到 `deposit` 方法（约第328行），替换整个函数为：
+
+```typescript
+deposit = async (ethAmount: string) => {
+  if (!this.walletClient || !this.account) throw new Error('Connect wallet before depositing');
+  const hash = await this.walletClient.writeContract({
+    account: this.account,
+    address: this.ensureContract(),
+    abi: EXCHANGE_ABI,
+    functionName: 'deposit',
+    value: parseEther(ethAmount),
+    chain: undefined,
+  } as any);
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== 'success') throw new Error('Transaction failed');
+  await this.refresh();
+}
+```
+
+---
+
+### 5.3 实现 `withdraw()` 函数
+
+找到 `withdraw` 方法（约第328行），替换整个函数为：
+
+```typescript
+withdraw = async (amount: string) => {
+  if (!this.walletClient || !this.account) throw new Error('Connect wallet before withdrawing');
+  const parsed = parseEther(amount || '0');
+  const hash = await this.walletClient.writeContract({
+    account: this.account,
+    address: this.ensureContract(),
+    abi: EXCHANGE_ABI,
+    functionName: 'withdraw',
+    args: [parseEther(amount)],
+    chain: undefined,
+  } as any);
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== 'success') throw new Error('Transaction failed');
+  await this.refresh();
+}
+```
+
+---
+
+### 验证
+
+修改完成后：
+1. 启动前端：`cd frontend && pnpm dev`
+2. 打开 http://localhost:3000
+3. 点击 `Deposit` 输入 `0.1`，应该拉起钱包签名
+4. 等待交易确认后，`Available` 余额应该增加
+5. 点击 `Withdraw` 输入 `0.05`，余额应该减少
+
+> [!TIP]
+> `runInAction()` 在 `refresh()` 方法中已经自动处理状态更新，你不需要手动添加。
 
 ---
 
@@ -437,7 +439,7 @@ query {
 - `withdraw`：做最小校验并安全转账
 - `margin()`：让测试与前端能读取链上余额
 
-Day2 会在此基础上引入“订单簿与下单”：
+Day2 会在此基础上引入"订单簿与下单"：
 
 - `placeOrder` / `cancelOrder`
 - 买卖盘链表插入、价格优先级
@@ -445,7 +447,94 @@ Day2 会在此基础上引入“订单簿与下单”：
 
 ---
 
-## 9) 可选挑战 / 扩展（不影响主线）
+## 9) 架构演进：从直接读合约到 Indexer
+
+### Day1-3：直接读合约（简单但低效）
+
+```typescript
+// 当前前端 store 的做法
+const m = await publicClient.readContract({
+    abi: EXCHANGE_ABI,
+    address,
+    functionName: 'margin',
+    args: [this.account],
+} as any) as bigint;
+
+// 订单簿：遍历链表（~100行代码）
+await Promise.all([
+    this.loadOrderChain(bestBid),
+    this.loadOrderChain(bestAsk)
+]);
+```
+
+**问题**：
+- 每次刷新都要遍历订单链表（O(n) 复杂度）
+- 无法实时更新，只能轮询
+- 订单簿深度限制（最多20条）
+- 无法查询历史成交记录
+
+---
+
+### Day5+：使用 Indexer（高效且实时）
+
+#### 合约已有的事件
+```solidity
+// ExchangeStorage.sol 中已定义
+event MarginDeposited(address indexed trader, uint256 amount);
+event MarginWithdrawn(address indexed trader, uint256 amount);
+event OrderPlaced(uint256 indexed id, address indexed trader, bool isBuy, uint256 price, uint256 amount);
+event OrderRemoved(uint256 indexed id);
+event TradeExecuted(uint256 indexed buyOrderId, uint256 indexed sellOrderId, uint256 price, uint256 amount, address buyer, address seller);
+event MarkPriceUpdated(uint256 markPrice, uint256 indexPrice);
+event FundingUpdated(int256 cumulativeFundingRate, uint256 timestamp);
+```
+
+#### Indexer 维护状态
+```
+链上事件 → Envio Indexer 解析 → PostgreSQL 存储 → GraphQL API → 前端查询
+```
+
+#### Day5 优化后的前端代码
+```typescript
+// 不再需要遍历链表
+const { data } = await query(GET_ORDER_BOOK, {
+    variables: { limit: 20 }
+});
+
+// 实时订阅订单更新
+const subscription = subscribe(ORDER_UPDATES, {
+    onData: (order) => {
+        // 实时更新订单簿
+    }
+});
+
+// 查询历史成交
+const { data: trades } = await query(GET_TRADES, {
+    variables: { trader: this.account, limit: 50 }
+});
+```
+
+**优势**：
+- ✅ 订单簿由 Indexer 聚合，前端只需查询
+- ✅ WebSocket 实时推送，无需轮询
+- ✅ 完整历史记录（K线、成交）
+- ✅ 减少前端计算，提升性能
+
+---
+
+### Day1-3 vs Day5+ 对比
+
+| 功能 | Day1-3（当前） | Day5+（优化后） |
+|------|---------------|-----------------|
+| **订单簿** | 前端遍历链表（复杂） | Indexer 维护（简单） |
+| **成交记录** | 无法查询 | Indexer 聚合 |
+| **价格** | 定期读合约 | Indexer 跟踪 event |
+| **持仓** | 直接读合约 | Indexer 计算 |
+| **实时性** | 轮询（4秒一次） | WebSocket 推送 |
+
+---
+
+## 10) 可选挑战 / 扩展（不影响主线）
 
 1. 给 `deposit/withdraw` 补事件断言
    - 在 `Day1Margin.t.sol` 新增 `vm.expectEmit(...)`，校验 `MarginDeposited` / `MarginWithdrawn` 参数。

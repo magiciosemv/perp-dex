@@ -105,13 +105,15 @@ EOF
     echo "Granting OPERATOR_ROLE to Alice..."
     cast send "$EXCHANGE_ADDR" "setOperator(address)" 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --private-key "$PRIVATE_KEY" --rpc-url "$RPC_URL" >/dev/null
 
-    # Copy ABI JSON to frontend
+    # Copy ABI JSON to frontend and convert to TS with 'as const'
     ABI_SOURCE="$CONTRACT_DIR/out/Exchange.sol/MonadPerpExchange.json"
-    ABI_DEST="$ROOT_DIR/frontend/onchain/ExchangeABI.json"
+    ABI_DEST_TS="$ROOT_DIR/frontend/onchain/ExchangeABI.ts"
     if [[ -f "$ABI_SOURCE" ]]; then
-      # Extract only the 'abi' field from the JSON
-      jq '.abi' "$ABI_SOURCE" > "$ABI_DEST"
-      echo "已复制 ABI 到 frontend/onchain/ExchangeABI.json"
+      # Extract only the 'abi' field from the JSON and wrap it in a TS export
+      echo "export const EXCHANGE_ABI = " > "$ABI_DEST_TS"
+      jq '.abi' "$ABI_SOURCE" >> "$ABI_DEST_TS"
+      echo " as const;" >> "$ABI_DEST_TS"
+      echo "已生成 ABI 到 frontend/onchain/ExchangeABI.ts"
     fi
     
     # Update Indexer config.yaml
