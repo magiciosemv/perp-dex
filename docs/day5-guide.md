@@ -368,7 +368,7 @@ loadCandles = async () => {
     const result = await client.query(GET_CANDLES, {}).toPromise();
     if (result.data?.Candle) {
         const candles = result.data.Candle.map((c: any) => ({
-            time: c.timestamp,
+            time: new Date(c.timestamp * 1000).toISOString(),
             open: Number(formatEther(c.openPrice)),
             high: Number(formatEther(c.highPrice)),
             low: Number(formatEther(c.lowPrice)),

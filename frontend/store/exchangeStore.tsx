@@ -206,6 +206,7 @@ class ExchangeStore {
     // 1. 使用 client.query(GET_CANDLES, {}).toPromise() 查询
     // 2. 从 result.data?.Candle 获取蜡烛图数组
     // 3. 转换为 CandleData 格式 (time, open, high, low, close)
+    //    注意: time 需要转为 ISO 字符串: new Date(c.timestamp * 1000).toISOString()
     // 4. 使用 runInAction 更新 this.candles
   };
 
