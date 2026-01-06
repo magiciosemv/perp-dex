@@ -57,10 +57,10 @@ class ExchangeStore {
     makeAutoObservable(this);
     this.autoConnect();
     this.refresh();
-    // 定时刷新
+    // 定时刷新（静默模式，不触发 syncing 状态变化）
     setInterval(() => {
-      this.refresh().catch(() => { });
-    }, 4000);
+      this.refresh(true).catch(() => { });
+    }, 500);
     console.info('[store] 交易所 store 初始化完成');
   }
 
@@ -238,12 +238,14 @@ class ExchangeStore {
     return []; // TODO: 移除这行，实现上面的逻辑
   };
 
-  refresh = async () => {
+  refresh = async (silent = false) => {
     try {
-      runInAction(() => {
-        this.syncing = true;
-        this.error = undefined;
-      });
+      if (!silent) {
+        runInAction(() => {
+          this.syncing = true;
+          this.error = undefined;
+        });
+      }
       const address = this.ensureContract();
       const [mark, index, bestBid, bestAsk, imBps] = await Promise.all([
         publicClient.readContract({ abi: EXCHANGE_ABI, address, functionName: 'markPrice' } as any) as Promise<bigint>,
@@ -368,9 +370,13 @@ class ExchangeStore {
         this.myOrders = [];
       });
     } catch (e) {
-      runInAction(() => (this.error = (e as Error)?.message || 'Failed to sync exchange data'));
+      if (!silent) {
+        runInAction(() => (this.error = (e as Error)?.message || 'Failed to sync exchange data'));
+      }
     } finally {
-      runInAction(() => (this.syncing = false));
+      if (!silent) {
+        runInAction(() => (this.syncing = false));
+      }
     }
   };
 
