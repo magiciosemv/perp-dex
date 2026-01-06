@@ -200,7 +200,7 @@ class ExchangeStore {
     // Open for implementation in Day 5
   };
 
-  loadTrades = async (viewer?: Address): Promise<Trade[]> => {
+  loadTrades = async (): Promise<Trade[]> => {
     // Open for implementation in Day 5
     return [];
   };
@@ -332,7 +332,7 @@ class ExchangeStore {
       });
 
       // Load Trades (Day 5)
-      // await this.loadTrades(this.account);
+      // await this.loadTrades();
 
       // Load Candles (Day 5)
       // this.loadCandles();

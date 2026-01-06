@@ -342,7 +342,7 @@ import { client, GET_CANDLES, GET_RECENT_TRADES, GET_POSITIONS, GET_OPEN_ORDERS 
 找到 `loadTrades` 方法（标记为 `// Open for implementation in Day 5`），实现如下：
 
 ```typescript
-loadTrades = async (viewer?: Address): Promise<Trade[]> => {
+loadTrades = async (): Promise<Trade[]> => {
     const result = await client.query(GET_RECENT_TRADES, {}).toPromise();
     if (!result.data?.Trade) return [];
     const trades = result.data.Trade.map((t: any) => ({
@@ -382,7 +382,7 @@ loadCandles = async () => {
 在 `refresh()` 方法中，找到以下被注释的代码并取消注释：
 
 ```typescript
-await this.loadTrades(this.account);
+await this.loadTrades();
 this.loadCandles();
 ```
 
