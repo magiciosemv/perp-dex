@@ -329,9 +329,11 @@ query {
 
 在 `frontend/store/exchangeStore.tsx` 中实现从 Indexer 获取数据的逻辑。
 
-#### 6.0 启用 IndexerClient
+#### 6.0 确认 IndexerClient 已启用
 
-在文件顶部找到被注释的 import 语句，取消注释：
+如果你在 Day 2 已经完成了这一步，可以跳过。
+
+确认文件顶部已有以下 import 语句（在 Day 2 Step 2.1 中启用）：
 
 ```typescript
 import { client, GET_CANDLES, GET_RECENT_TRADES, GET_POSITIONS, GET_OPEN_ORDERS } from './IndexerClient';

@@ -670,46 +670,32 @@ placeOrder = async (params: { side: OrderSide; orderType?: OrderType; price?: st
 
 ### Step 2: 从 Indexer 获取我的订单
 
-修改 `frontend/store/exchangeStore.tsx`，添加 `loadMyOrders` 函数：
+#### 2.1 启用 IndexerClient
+
+在文件顶部找到被注释的 import 语句，取消注释：
+
+```typescript
+import { client, GET_CANDLES, GET_RECENT_TRADES, GET_POSITIONS, GET_OPEN_ORDERS } from './IndexerClient';
+```
+
+#### 2.2 实现 loadMyOrders
+
+找到 `loadMyOrders` 方法，实现如下：
 
 ```typescript
 // Day 2: 从 Indexer 获取用户的 OPEN 订单
 loadMyOrders = async (trader: Address): Promise<OpenOrder[]> => {
-  try {
-    const response = await fetch('http://localhost:8080/v1/graphql', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: `
-          query GetMyOrders($trader: String!) {
-            Order(where: { trader: { _ilike: $trader }, status: { _eq: "OPEN" } }, order_by: { timestamp: desc }) {
-              id
-              isBuy
-              price
-              amount
-              initialAmount
-              timestamp
-            }
-          }
-        `,
-        variables: { trader },
-      }),
-    });
-    const json = await response.json();
-    const orders = json.data?.Order || [];
-    return orders.map((o: any) => ({
-      id: BigInt(o.id),
-      isBuy: o.isBuy,
-      price: BigInt(o.price),
-      amount: BigInt(o.amount),
-      initialAmount: BigInt(o.initialAmount),
-      timestamp: BigInt(o.timestamp),
-      trader: trader,
-    }));
-  } catch (e) {
-    console.error('[loadMyOrders] error', e);
-    return [];
-  }
+  const result = await client.query(GET_OPEN_ORDERS, { trader }).toPromise();
+  const orders = result.data?.Order || [];
+  return orders.map((o: any) => ({
+    id: BigInt(o.id),
+    isBuy: o.isBuy,
+    price: BigInt(o.price),
+    amount: BigInt(o.amount),
+    initialAmount: BigInt(o.initialAmount),
+    timestamp: BigInt(o.timestamp),
+    trader: trader,
+  }));
 };
 ```
 

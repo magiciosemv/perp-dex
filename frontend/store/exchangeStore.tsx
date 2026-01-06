@@ -5,6 +5,7 @@ import { EXCHANGE_ABI } from '../onchain/abi';
 import { EXCHANGE_ADDRESS, EXCHANGE_DEPLOY_BLOCK } from '../onchain/config';
 import { chain, getWalletClient, publicClient, fallbackAccount, ACCOUNTS } from '../onchain/client';
 import { OrderBookItem, OrderSide, OrderType, PositionSnapshot, Trade, CandleData } from '../types';
+// Day 2 TODO: 取消注释以启用 IndexerClient
 // import { client, GET_CANDLES, GET_RECENT_TRADES, GET_POSITIONS, GET_OPEN_ORDERS } from './IndexerClient';
 
 type OrderStruct = {
@@ -196,12 +197,29 @@ class ExchangeStore {
     }));
   };
 
+  // ============================================
+  // Day 5 TODO: 从 Indexer 获取 K 线数据
+  // ============================================
   loadCandles = async () => {
-    // Open for implementation in Day 5
+    // TODO: Day 5 - 实现从 Indexer 获取 K 线数据
+    // 步骤:
+    // 1. 使用 client.query(GET_CANDLES, {}).toPromise() 查询
+    // 2. 从 result.data?.Candle 获取蜡烛图数组
+    // 3. 转换为 CandleData 格式 (time, open, high, low, close)
+    // 4. 使用 runInAction 更新 this.candles
   };
 
+  // ============================================
+  // Day 5 TODO: 从 Indexer 获取最近成交
+  // ============================================
   loadTrades = async (): Promise<Trade[]> => {
-    // Open for implementation in Day 5
+    // TODO: Day 5 - 实现从 Indexer 获取最近成交
+    // 步骤:
+    // 1. 使用 client.query(GET_RECENT_TRADES, {}).toPromise() 查询
+    // 2. 从 result.data?.Trade 获取成交数组
+    // 3. 转换为 Trade 格式 (id, price, amount, time, side)
+    // 4. side 判断: BigInt(buyOrderId) > BigInt(sellOrderId) ? 'buy' : 'sell'
+    // 5. 使用 runInAction 更新 this.trades
     return [];
   };
 
@@ -211,10 +229,10 @@ class ExchangeStore {
   loadMyOrders = async (trader: Address): Promise<OpenOrder[]> => {
     // TODO: Day 2 - 实现从 Indexer 获取用户 OPEN 状态的订单
     // 步骤:
-    // 1. 使用 fetch 向 http://localhost:8080/v1/graphql 发送 POST 请求
-    // 2. GraphQL 查询: Order(where: { trader: { _ilike: $trader }, status: { _eq: "OPEN" } })
+    // 1. 使用 client.query(GET_OPEN_ORDERS, { trader }).toPromise() 查询
+    // 2. 从 result.data?.Order 获取订单数组
     // 3. 将返回的数据转换为 OpenOrder[] 格式
-    // 4. 注意将 string 类型转换为 bigint
+    // 4. 注意将 string 类型转换为 bigint (使用 BigInt())
 
     return []; // TODO: 移除这行，实现上面的逻辑
   };
