@@ -327,24 +327,40 @@ query {
 
 ### Step 6: 前端数据抓取 (Store 逻辑)
 
-在 `frontend/store/exchangeStore.tsx` 中，我们需要通过 GraphQL 客户端抓取索引器的数据。
+在 `frontend/store/exchangeStore.tsx` 中实现从 Indexer 获取数据的逻辑。
 
-#### 6.1 抓取成交历史
+#### 6.0 启用 IndexerClient
+
+在文件顶部找到被注释的 import 语句，取消注释：
+
 ```typescript
-loadTrades = async (): Promise<Trade[]> => {
+import { client, GET_CANDLES, GET_RECENT_TRADES, GET_POSITIONS, GET_OPEN_ORDERS } from './IndexerClient';
+```
+
+#### 6.1 实现 loadTrades
+
+找到 `loadTrades` 方法（标记为 `// Open for implementation in Day 5`），实现如下：
+
+```typescript
+loadTrades = async (viewer?: Address): Promise<Trade[]> => {
     const result = await client.query(GET_RECENT_TRADES, {}).toPromise();
     if (!result.data?.Trade) return [];
-    return result.data.Trade.map((t: any) => ({
+    const trades = result.data.Trade.map((t: any) => ({
         id: t.id,
         price: Number(formatEther(t.price)),
         amount: Number(formatEther(t.amount)),
         time: new Date(t.timestamp * 1000).toLocaleTimeString(),
         side: BigInt(t.buyOrderId) > BigInt(t.sellOrderId) ? 'buy' : 'sell',
     }));
+    runInAction(() => { this.trades = trades; });
+    return trades;
 };
 ```
 
-#### 6.2 抓取 K 线数据
+#### 6.2 实现 loadCandles
+
+找到 `loadCandles` 方法，实现如下：
+
 ```typescript
 loadCandles = async () => {
     const result = await client.query(GET_CANDLES, {}).toPromise();
@@ -356,7 +372,7 @@ loadCandles = async () => {
             low: Number(formatEther(c.lowPrice)),
             close: Number(formatEther(c.closePrice)),
         }));
-        this.candles = candles;
+        runInAction(() => { this.candles = candles; });
     }
 };
 ```
@@ -366,7 +382,6 @@ loadCandles = async () => {
 在 `refresh()` 方法中，找到以下被注释的代码并取消注释：
 
 ```typescript
-// 取消这两行的注释以启用 Indexer 数据加载
 await this.loadTrades(this.account);
 this.loadCandles();
 ```
