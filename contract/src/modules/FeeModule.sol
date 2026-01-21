@@ -18,11 +18,12 @@ abstract contract FeeModule is PricingModule {
         tierFeeBps[VIPLevel.VIP4] = 5;   // 5 bps (0.05%)
 
         // 设置VIP升级阈值 (30天累计交易量，USD计价，1e18精度)
-        // 假设 1 USD = 1 MON (实际部署时需要根据价格调整)
-        vipVolumeThresholds[0] = 1000 ether;  // VIP0 -> VIP1: 1000 USD
-        vipVolumeThresholds[1] = 2000 ether;  // VIP1 -> VIP2: 2000 USD
-        vipVolumeThresholds[2] = 5000 ether;  // VIP2 -> VIP3: 5000 USD
-        vipVolumeThresholds[3] = 8000 ether;  // VIP3 -> VIP4: 8000 USD
+        // notional = amount * price / 1e18，其中price以1e18为单位
+        // 所以notional也会以1e18为单位，需要与之匹配
+        vipVolumeThresholds[0] = 1000 * 1e18;  // VIP0 -> VIP1: 1000 USD
+        vipVolumeThresholds[1] = 2000 * 1e18;  // VIP1 -> VIP2: 2000 USD
+        vipVolumeThresholds[2] = 5000 * 1e18;  // VIP2 -> VIP3: 5000 USD
+        vipVolumeThresholds[3] = 8000 * 1e18;  // VIP3 -> VIP4: 8000 USD
 
         // 默认项目方收款地址为部署者地址（后续可通过setFeeReceiver修改）
         feeReceiver = msg.sender;

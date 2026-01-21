@@ -39,4 +39,4 @@ networks:
     contracts:
       - name: Exchange
         address:
-          - 0x769d240238f15ef1b7ab773d74dbc13987e12d49  # 实际部署地址（部署脚本会自动更新）
+          - 0xbb071dcca5b4f1f5e376d02fff9f77def0edafb4  # 实际部署地址（部署脚本会自动更新）

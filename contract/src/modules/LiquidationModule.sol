@@ -105,15 +105,11 @@ abstract contract LiquidationModule is ReferralModule {
         _chargeTradingFee(buyer, notional, buyerIsMaker);
         _chargeTradingFee(seller, notional, sellerIsMaker);
 
-        // 5. 更新交易量（用于VIP升级）
-        _updateTradingVolume(buyer, notional);
-        _updateTradingVolume(seller, notional);
-
-        // 6. 更新双方持仓
+        // 5. 更新双方持仓
         _updatePosition(buyer, true, amount, price);
         _updatePosition(seller, false, amount, price);
 
-        // 7. 触发成交事件
+        // 6. 触发成交事件
         emit TradeExecuted(buyOrderId, sellOrderId, price, amount, buyer, seller);
     }
 

@@ -32,6 +32,10 @@ abstract contract OrderBookModule is MarginModule {
         // 保证金检查（最坏情况）
         _checkWorstCaseMargin(msg.sender);
 
+        // 计算名义价值并更新交易量（用于VIP升级）
+        uint256 notional = (amount * price) / 1e18;
+        _updateTradingVolume(msg.sender, notional);
+
         // 生成订单 ID 并创建订单
         orderIdCounter += 1;
         uint256 orderId = orderIdCounter;
