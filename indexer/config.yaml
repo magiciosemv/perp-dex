@@ -1,7 +1,42 @@
-# Envio Indexer Config
-# Day 5: TODO - 配置你的索引器
+name: monad-exchange-indexer
+description: Indexer for Monad Perpetual Exchange events
 
-# 提示: 你需要配置:
-# 1. 网络信息 (Monad Testnet/Anvil)
-# 2. 合约地址
-# 3. 需要监听的事件 (MarginDeposited, TradeExecuted, etc.)
+field_selection:
+  transaction_fields:
+    - hash
+
+contracts:
+  - name: Exchange
+    handler: src/EventHandlers.ts
+    events:
+      # Day 1: 保证金事件
+      - event: MarginDeposited(address indexed trader, uint256 amount)
+      - event: MarginWithdrawn(address indexed trader, uint256 amount)
+      # Day 2: 订单事件
+      - event: OrderPlaced(uint256 indexed id, address indexed trader, bool isBuy, uint256 price, uint256 amount)
+      - event: OrderRemoved(uint256 indexed id)
+      # Day 3: 成交与持仓事件
+      - event: TradeExecuted(uint256 indexed buyOrderId, uint256 indexed sellOrderId, uint256 price, uint256 amount, address buyer, address seller)
+      - event: PositionUpdated(address indexed trader, int256 size, uint256 entryPrice)
+      # Day 4: 价格更新事件
+      - event: MarkPriceUpdated(uint256 markPrice, uint256 indexPrice)
+      # Day 6: 资金费率事件
+      - event: FundingUpdated(int256 cumulativeFundingRate, uint256 timestamp)
+      - event: FundingPaid(address indexed trader, int256 amount)
+      # Day 7: 清算事件
+      - event: Liquidated(address indexed trader, address indexed liquidator, uint256 amount, uint256 reward)
+      # Day 8+: VIP和返佣事件
+      - event: ReferralRegistered(address indexed user, address indexed referrer)
+      - event: RebatePaid(address indexed trader, address indexed referrer, uint256 feeAmount, uint256 rebateAmount)
+      - event: VIPLevelUpgraded(address indexed trader, uint8 oldLevel, uint8 newLevel)
+      - event: TradingFeeCharged(address indexed trader, uint256 notional, uint256 feeAmount, bool isMaker, uint8 vipLevel)
+
+networks:
+  - id: 31337  # Anvil local network
+    start_block: 0
+    rpc_config:
+      url: http://127.0.0.1:8545
+    contracts:
+      - name: Exchange
+        address:
+          - 0x769d240238f15ef1b7ab773d74dbc13987e12d49  # 实际部署地址（部署脚本会自动更新）

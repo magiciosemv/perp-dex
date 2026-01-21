@@ -31,6 +31,8 @@ pkill -f "anvil --" >/dev/null 2>&1 || true
 sleep 2
 
 echo "启动 anvil (chain-id=$CHAIN_ID, port=$PORT)..."
+# Create log directory if it doesn't exist
+mkdir -p "$(dirname "$LOG_FILE")"
 # Reset log file
 echo "Starting Anvil..." > "$LOG_FILE"
 anvil --host 0.0.0.0 --chain-id "$CHAIN_ID" --port "$PORT" --block-time 1 >>"$LOG_FILE" 2>&1 &
@@ -118,10 +120,13 @@ EOF
     # Update Indexer config.yaml
     INDEXER_CONFIG="$ROOT_DIR/indexer/config.yaml"
     if [[ -f "$INDEXER_CONFIG" ]]; then
-      # Use sed to replace the address (assuming standard formatting)
-      # We look for the line with the address and replace it
-      # Note: This is a simple replacement, assuming the file structure doesn't change drastically
+      # Use sed to replace the address (cross-platform compatible)
+      # macOS sed needs -i '', Linux sed needs -i
+      if [[ "$OSTYPE" == "darwin"* ]]; then
       sed -i '' "s/0x[a-fA-F0-9]\{40\}/$EXCHANGE_ADDR/" "$INDEXER_CONFIG"
+      else
+        sed -i "s/0x[a-fA-F0-9]\{40\}/$EXCHANGE_ADDR/" "$INDEXER_CONFIG"
+      fi
       echo "已更新 indexer/config.yaml (exchange=$EXCHANGE_ADDR)"
     else
       echo "未找到 indexer/config.yaml，跳过更新"

@@ -9,8 +9,20 @@ const shortenAddress = (addr?: string) => {
 };
 
 export const Header: React.FC = observer(() => {
-  const { account, connectWallet, markPrice, syncing, accountIndex, switchAccount } = useExchangeStore();
+  const { account, connectWallet, markPrice, syncing, accountIndex, switchAccount, vipInfo } = useExchangeStore();
   const priceDisplay = markPrice > 0n ? Number(markPrice) : undefined;
+  
+  const getVIPBadgeColor = () => {
+    if (!vipInfo) return '';
+    const colors: Record<number, string> = {
+      0: 'bg-gray-800/30 text-gray-300 border-gray-400/50',      // VIP 0
+      1: 'bg-blue-900/30 text-blue-400 border-blue-500/50',      // VIP 1
+      2: 'bg-green-900/30 text-green-400 border-green-500/50',  // VIP 2
+      3: 'bg-purple-900/30 text-purple-400 border-purple-500/50', // VIP 3
+      4: 'bg-yellow-900/30 text-yellow-400 border-yellow-500/50', // VIP 4
+    };
+    return colors[vipInfo.level] || '';
+  };
 
   return (
     <header className="h-16 border-b border-white/5 bg-[#0B0E14] flex items-center justify-between px-6 sticky top-0 z-50">
@@ -44,6 +56,11 @@ export const Header: React.FC = observer(() => {
       </div>
 
       <div className="flex items-center space-x-4">
+        {account && vipInfo && (
+          <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${getVIPBadgeColor()}`}>
+            {vipInfo.levelName}
+          </div>
+        )}
         <div className="flex items-center space-x-2">
           <button
             onClick={() => {

@@ -71,6 +71,19 @@
   }
 }
 </script>
+<script>
+  // 防止第三方脚本访问不存在的 loadingWrapper 元素
+  if (typeof window !== 'undefined') {
+    const originalGetElementById = document.getElementById;
+    document.getElementById = function(id) {
+      if (id === 'loadingWrapper') {
+        console.warn('[App] loadingWrapper element not found, returning null');
+        return null;
+      }
+      return originalGetElementById.call(document, id);
+    };
+  }
+</script>
 <link rel="stylesheet" href="/index.css">
 </head>
   <body class="bg-[#05050A]">

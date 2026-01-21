@@ -1,4 +1,5 @@
-const INDEXER_URL = 'http://localhost:8080/v1/graphql';
+// 支持环境变量配置，默认使用 localhost:8080
+const INDEXER_URL = import.meta.env.VITE_INDEXER_URL || 'http://localhost:8080/v1/graphql';
 
 export const client = {
   query: (query: string, variables: any = {}) => {

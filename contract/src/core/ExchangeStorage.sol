@@ -126,6 +126,55 @@ abstract contract ExchangeStorage is AccessControl, ReentrancyGuard {
     uint256 public constant MAX_PENDING_ORDERS = 10;
 
     // ============================================
+    // VIP 和手续费状态
+    // ============================================
+
+    /// @notice VIP 等级枚举 (VIP 0-4，基于30天交易量)
+    enum VIPLevel {
+        VIP0,  // < 1,000 USD: 10 bps (0.10%)
+        VIP1,  // ≥ 1,000 USD: 9 bps (0.09%)
+        VIP2,  // ≥ 2,000 USD: 8 bps (0.08%)
+        VIP3,  // ≥ 5,000 USD: 6 bps (0.06%)
+        VIP4   // ≥ 8,000 USD: 5 bps (0.05%)
+    }
+
+    /// @notice 用户VIP等级 (地址 => VIP等级)
+    mapping(address => VIPLevel) public vipLevels;
+
+    /// @notice 用户累计交易量 (地址 => 30天累计交易量，1e18精度，USD计价)
+    mapping(address => uint256) public cumulativeTradingVolume;
+
+    /// @notice 用户交易量记录 (地址 => 时间戳 => 交易量)
+    /// @dev 用于30天滚动窗口计算
+    mapping(address => mapping(uint256 => uint256)) public volumeHistory;
+
+    /// @notice 用户交易量时间戳列表 (用于清理过期数据)
+    mapping(address => uint256[]) public volumeTimestamps;
+
+    /// @notice VIP等级对应的固定费率 (基点)
+    /// @dev VIP0=10 bps, VIP1=9 bps, VIP2=8 bps, VIP3=6 bps, VIP4=5 bps
+    mapping(VIPLevel => uint256) public tierFeeBps;
+
+    /// @notice VIP升级所需的最小交易量阈值 (USD计价，1e18精度)
+    /// @dev [0]=VIP0->VIP1: 1000 USD, [1]=VIP1->VIP2: 2000 USD, [2]=VIP2->VIP3: 5000 USD, [3]=VIP3->VIP4: 8000 USD
+    uint256[4] public vipVolumeThresholds;
+
+    /// @notice 项目方手续费接收地址
+    address public feeReceiver;
+
+    /// @notice 返佣比例 (基点, 默认1000 = 10%)
+    uint256 public referralRebateBps = 1000;
+
+    /// @notice 用户推荐人映射 (用户地址 => 推荐人地址)
+    mapping(address => address) public referrers;
+
+    /// @notice 累计手续费收入
+    uint256 public totalFeeCollected;
+
+    /// @notice 累计返佣支出
+    uint256 public totalRebatePaid;
+
+    // ============================================
     // 事件定义
     // ============================================
 
@@ -169,4 +218,33 @@ abstract contract ExchangeStorage is AccessControl, ReentrancyGuard {
 
     /// @notice 持仓更新事件
     event PositionUpdated(address indexed trader, int256 size, uint256 entryPrice);
+
+    /// @notice VIP等级升级事件
+    event VIPLevelUpgraded(address indexed trader, VIPLevel oldLevel, VIPLevel newLevel);
+
+    /// @notice 交易手续费扣除事件
+    event TradingFeeCharged(
+        address indexed trader,
+        uint256 notional,
+        uint256 feeAmount,
+        bool isMaker,
+        VIPLevel vipLevel
+    );
+
+    /// @notice 手续费参数更新事件
+    event FeeParamsUpdated(uint256 makerFeeBps, uint256 takerFeeBps, address feeReceiver);
+
+    /// @notice VIP阈值更新事件
+    event VIPThresholdsUpdated(uint256[4] thresholds);
+
+    /// @notice 推荐人注册事件
+    event ReferralRegistered(address indexed user, address indexed referrer);
+
+    /// @notice 返佣支付事件
+    event RebatePaid(
+        address indexed trader,
+        address indexed referrer,
+        uint256 feeAmount,
+        uint256 rebateAmount
+    );
 }

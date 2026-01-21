@@ -17,18 +17,41 @@
 | **Day 5** | 资金费率 | Funding Rate 公式, 多空结算 |
 | **Day 6** | 清算系统 | 健康度检查, 强制平仓, 奖励机制 |
 | **Day 7** | 集成测试 | 端到端流程验证 |
+| **Day 8+** | 商业化扩展 | **VIP等级系统 + 手续费管理 + 返佣系统** ✨ |
 
 ## 📁 项目结构
 
 ```
 ├── contract/          # Solidity 智能合约 (Foundry)
 │   ├── src/           # 主合约和模块
+│   │   ├── core/      # 核心存储（包含VIP和返佣）
+│   │   └── modules/   # 功能模块
+│   │       ├── FeeModule.sol        # 手续费模块（固定费率+返佣）
+│   │       ├── VIPModule.sol        # VIP等级管理
+│   │       ├── ReferralModule.sol   # 返佣系统
+│   │       └── ...
 │   └── test/          # Day1-7 测试用例
 ├── frontend/          # React 交易界面
+│   ├── components/
+│   │   ├── VIPInfo.tsx          # VIP信息显示
+│   │   ├── VIPPanel.tsx         # VIP面板（信息/特权/返佣）
+│   │   ├── VIPProgress.tsx      # VIP升级进度
+│   │   ├── VIPPrivileges.tsx    # VIP特权列表
+│   │   └── ReferralCenter.tsx   # 返佣中心
+│   └── store/         # MobX状态管理
 ├── indexer/           # Envio 事件索引器
+│   ├── schema.graphql # 包含VIP和返佣实体
+│   └── src/
 ├── keeper/            # 价格更新 & 清算服务
+│   ├── src/services/
+│   │   └── VIPKeeper.ts  # VIP等级自动更新
+│   └── src/index.ts
 ├── scripts/           # 部署和运行脚本
 └── docs/              # 课程文档
+    ├── COMPLETE_SETUP_GUIDE.md              # 完整启动指南
+    ├── COMMERCIAL_EXTENSION_IMPLEMENTATION.md  # 商业化扩展实施说明
+    ├── IMPLEMENTATION_SUMMARY.md            # 实施总结
+    └── ...
 ```
 
 ## 🚀 快速开始
@@ -37,14 +60,21 @@
 
 - [Foundry](https://book.getfoundry.sh/getting-started/installation) (forge, anvil)
 - [Node.js](https://nodejs.org/) >= 18
-- [pnpm](https://pnpm.io/) (可选，用于 indexer)
+- [pnpm](https://pnpm.io/) (用于 indexer)
+- [Docker](https://www.docker.com/) (索引器需要)
+- [jq](https://stedolan.github.io/jq/) (推荐，用于JSON处理)
 
 ### 一键启动
 
 ```bash
-# 启动本地链 + 部署合约 + 前端
+# 启动所有服务（Anvil + 合约 + 索引器 + 前端 + Keeper）
 ./quickstart.sh
+
+# 检查服务状态
+./scripts/check-services.sh
 ```
+
+**详细启动说明请参考**: [完整启动指南](docs/COMPLETE_SETUP_GUIDE.md)
 
 ### 手动运行
 
@@ -67,18 +97,18 @@ React + Vite 构建的交易界面，包含以下组件：
 
 | 组件 | 功能 |
 |------|------|
-| **Header** | 钱包连接、余额显示 |
+| **Header** | 钱包连接、余额显示、VIP徽章 |
 | **OrderForm** | 下单表单（买/卖、价格、数量） |
 | **OrderBook** | 实时订单簿（买卖盘） |
 | **Positions** | 持仓管理、PnL 显示 |
-| **MarketStats** | 市场统计、资金费率 |
-| **TradingChart** | K线图（占位） |
+| **TradingChart** | K线图（通过索引器） |
+| **VIPPanel** | VIP信息、特权、返佣中心 ✨ |
 
 ### 前端运行
 
 ```bash
 cd frontend
-cp .env.example .env.local  # 配置环境变量
+cp .env.example .env.local  # 配置环境变量（通常自动生成）
 npm install
 npm run dev
 ```
@@ -109,7 +139,7 @@ forge test --match-contract Day3MatchingTest -vvv
 forge test --match-contract Day4PriceUpdateTest -vvv
 
 # Day 5: 资金费率
-forge test --match-contract Day5FundingTest -vvv
+forge test --match-contract Day6FundingTest -vvv
 
 # Day 6: 清算机制
 forge test --match-contract Day6LiquidationTest -vvv
@@ -127,12 +157,57 @@ forge test --match-contract Day7IntegrationTest -vvv
 | **PricingModule** | `src/modules/PricingModule.sol` | 标记价、指数价更新 |
 | **FundingModule** | `src/modules/FundingModule.sol` | 资金费率计算与结算 |
 | **LiquidationModule** | `src/modules/LiquidationModule.sol` | 健康度检查、强制平仓 |
+| **FeeModule** | `src/modules/FeeModule.sol` | 手续费计算和扣除（固定费率+返佣） |
+| **VIPModule** | `src/modules/VIPModule.sol` | VIP等级管理和升级 |
+| **ReferralModule** | `src/modules/ReferralModule.sol` | 推荐人绑定和返佣管理 |
+
+## 🌟 商业化扩展功能（Day 8+）
+
+### VIP等级体系
+
+基于30天交易量自动判定VIP等级：
+
+| 等级 | 交易量门槛 (30天) | 费率 |
+|------|------------------|------|
+| VIP 0 | < 1,000 USD | 10 bps (0.10%) |
+| VIP 1 | ≥ 1,000 USD | 9 bps (0.09%) |
+| VIP 2 | ≥ 2,000 USD | 8 bps (0.08%) |
+| VIP 3 | ≥ 5,000 USD | 6 bps (0.06%) |
+| VIP 4 | ≥ 8,000 USD | 5 bps (0.05%) |
+
+### 返佣系统
+
+- **推荐人绑定**：每个用户只能绑定一个推荐人（不可更改）
+- **返佣比例**：10%手续费返佣给推荐人
+- **手续费分配**：90%项目方 + 10%推荐人
+- **实时到账**：返佣直接增加到推荐人保证金
+
+### 前端功能
+
+- **VIP信息面板**：显示等级、交易量、费率、升级进度
+- **返佣中心**：邀请链接生成、推荐人绑定、返佣统计
+- **自动识别**：通过URL参数（`?ref=0x...`）自动识别推荐人
+
+详细说明请参考：
+- [商业化扩展实施总结](docs/IMPLEMENTATION_SUMMARY.md)
+- [商业化扩展实施说明](docs/COMMERCIAL_EXTENSION_IMPLEMENTATION.md)
 
 ## 📚 学习资源
 
-- [课程大纲](docs/outline.md)
-- [保证金计算说明](docs/margin_calculation_explained.md)
-- [资金费率问题分析](docs/funding_rate_issue.md)
+### 核心文档
+- [完整启动指南](docs/COMPLETE_SETUP_GUIDE.md) - **详细的服务启动和故障排查指南**
+- [商业化扩展实施总结](docs/IMPLEMENTATION_SUMMARY.md) - **Day 8+扩展功能完整总结**
+- [手续费+VIP系统实现说明](docs/fee-vip-system.md) - VIP和手续费系统完整说明
+- [前端VIP系统实现说明](docs/frontend-vip-implementation.md) - 前端VIP功能实现细节
+
+### 课程文档
+- [Day 1: 保证金系统](docs/day1-guide.md)
+- [Day 2: 订单簿结构](docs/day2-guide.md)
+- [Day 3: 撮合引擎](docs/day3-guide.md)
+- [Day 4: 价格预言机](docs/day4-guide.md)
+- [Day 5: 资金费率](docs/day5-guide.md)
+- [Day 6: 清算系统](docs/day6-guide.md)
+- [Day 7: 集成测试](docs/day7-guide.md)
 
 ## ⚠️ 声明
 
@@ -143,6 +218,7 @@ forge test --match-contract Day7IntegrationTest -vvv
 - 无保险基金机制
 - 单一交易对
 - 测试私钥为 Anvil 公开默认值
+- VIP交易量计算假设 1 USD = 1 MON（实际部署需调整）
 
 **请勿用于真实资金交易。**
 

@@ -4,14 +4,9 @@ import { EXCHANGE_ABI } from '../abi';
 import { EXCHANGE_ADDRESS as ADDRESS } from '../config';
 
 /**
- * Liquidator Service - 脚手架版本
+ * Liquidator Service
  * 
- * 这个服务负责监控用户健康度并执行清算。
- * 
- * TODO: 学生需要实现以下功能：
- * 1. 监听 OrderPlaced 和 TradeExecuted 事件，跟踪活跃交易者
- * 2. 定期检查每个交易者的健康度
- * 3. 对可清算的仓位调用合约的 liquidate 函数
+ * 负责监控用户健康度并执行清算。
  */
 export class Liquidator {
     private intervalId: NodeJS.Timeout | null = null;
@@ -25,8 +20,31 @@ export class Liquidator {
         this.isRunning = true;
         console.log(`[Liquidator] Starting liquidation checks every ${this.intervalMs}ms...`);
 
-        // TODO: 实现事件监听
-        // 提示: 使用 publicClient.watchContractEvent 监听 OrderPlaced 和 TradeExecuted
+        // Day 7: 监听事件以跟踪活跃交易者
+        const unwatchOrderPlaced = publicClient.watchContractEvent({
+            address: ADDRESS as `0x${string}`,
+            abi: EXCHANGE_ABI,
+            eventName: 'OrderPlaced',
+            onLogs: (logs) => {
+                logs.forEach(log => {
+                    if (log.args.trader) {
+                        this.activeTraders.add(log.args.trader.toLowerCase());
+                    }
+                });
+            },
+        });
+
+        const unwatchTradeExecuted = publicClient.watchContractEvent({
+            address: ADDRESS as `0x${string}`,
+            abi: EXCHANGE_ABI,
+            eventName: 'TradeExecuted',
+            onLogs: (logs) => {
+                logs.forEach(log => {
+                    if (log.args.buyer) this.activeTraders.add(log.args.buyer.toLowerCase());
+                    if (log.args.seller) this.activeTraders.add(log.args.seller.toLowerCase());
+                });
+            },
+        });
 
         this.intervalId = setInterval(() => this.checkHealth(), this.intervalMs);
     }
@@ -42,13 +60,7 @@ export class Liquidator {
 
     /**
      * 检查所有活跃交易者的健康度
-     * 
-     * TODO: 实现此函数
-     * 步骤:
-     * 1. 遍历 activeTraders
-     * 2. 读取每个交易者的 margin 和 position
-     * 3. 模拟调用 liquidate 检查是否可清算
-     * 4. 如果可清算，发送实际交易
+     * Day 7: 遍历活跃交易者，检查是否可清算
      */
     private async checkHealth() {
         if (this.activeTraders.size === 0) {
@@ -58,12 +70,48 @@ export class Liquidator {
 
         console.log(`[Liquidator] Checking health for ${this.activeTraders.size} traders...`);
 
-        // TODO: 实现健康度检查逻辑
-        // 提示:
-        // - 使用 publicClient.readContract 读取 margin 和 getPosition
-        // - 使用 publicClient.simulateContract 测试是否可清算
-        // - 使用 walletClient.writeContract 执行清算
+        for (const trader of Array.from(this.activeTraders)) {
+            try {
+                // 读取持仓
+                const position = await publicClient.readContract({
+                    address: ADDRESS as `0x${string}`,
+                    abi: EXCHANGE_ABI,
+                    functionName: 'getPosition',
+                    args: [trader as `0x${string}`],
+                }) as any;
 
-        console.log('[Liquidator] Health check not implemented yet.');
+                // 如果持仓为 0，跳过
+                if (position.size === 0n) continue;
+
+                // 检查是否可清算
+                const canLiq = await publicClient.readContract({
+                    address: ADDRESS as `0x${string}`,
+                    abi: EXCHANGE_ABI,
+                    functionName: 'canLiquidate',
+                    args: [trader as `0x${string}`],
+                }) as boolean;
+
+                if (canLiq) {
+                    console.log(`[Liquidator] Liquidating trader ${trader}...`);
+                    try {
+                        // 执行清算（amount=0 表示全部清算）
+                        const hash = await walletClient.writeContract({
+                            address: ADDRESS as `0x${string}`,
+                            abi: EXCHANGE_ABI,
+                            functionName: 'liquidate',
+                            args: [trader as `0x${string}`, 0n],
+                        });
+                        await publicClient.waitForTransactionReceipt({ hash });
+                        console.log(`[Liquidator] Liquidation successful, tx: ${hash}`);
+                        // 清算后移除该交易者
+                        this.activeTraders.delete(trader);
+                    } catch (e: any) {
+                        console.error(`[Liquidator] Failed to liquidate ${trader}:`, e?.message || e);
+                    }
+                }
+            } catch (e) {
+                console.error(`[Liquidator] Error checking trader ${trader}:`, e);
+            }
+        }
     }
 }

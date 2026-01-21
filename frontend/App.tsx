@@ -5,6 +5,7 @@ import { OrderForm } from './components/OrderForm';
 import { OrderBook } from './components/OrderBook';
 import { RecentTrades } from './components/RecentTrades';
 import { Positions } from './components/Positions';
+import { VIPPanel } from './components/VIPPanel';
 import { ExchangeStoreProvider } from './store/exchangeStore';
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
@@ -73,9 +74,14 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Right Column: Trade Panel (25%) */}
-              <div className="col-span-12 md:col-span-6 lg:col-span-3 h-full min-h-0">
-                <OrderForm />
+              {/* Right Column: Trade Panel & VIP (25%) */}
+              <div className="col-span-12 md:col-span-6 lg:col-span-3 flex flex-col gap-2 h-full min-h-0">
+                <div className="flex-[2] min-h-0">
+                  <OrderForm />
+                </div>
+                <div className="flex-[1] min-h-0">
+                  <VIPPanel />
+                </div>
               </div>
 
             </div>

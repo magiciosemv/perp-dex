@@ -13,6 +13,8 @@ contract MonadPerpExchange is OrderBookModule, ViewModule {
         _grantRole(OPERATOR_ROLE, msg.sender);
         // Initial price setup can be done via updateIndexPrice by operator
         lastFundingTime = block.timestamp;
+        // Initialize fee and VIP parameters
+        _initializeFeeParams();
     }
 
     function setOperator(address newOperator) external onlyRole(DEFAULT_ADMIN_ROLE) {

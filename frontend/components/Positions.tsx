@@ -54,15 +54,17 @@ export const Positions: React.FC = observer(() => {
     // 初始保证金 = 持仓价值 × 初始保证金率
     // 使用 store 中的 initialMarginBps（默认 100 = 1%）
     const imBps = Number(store.initialMarginBps);
-    const positionValue = entry * absSize;
-    const initialMargin = positionValue * (imBps / 10000);
+    const entryPositionValue = entry * absSize;
+    const initialMargin = entryPositionValue * (imBps / 10000);
 
     const pnlPercent = initialMargin > 0 ? (pnl / initialMargin) * 100 : 0;
 
-    // TODO Day 7: 计算保证金率 (marginRatio)
+    // Day 7: 计算保证金率 (marginRatio)
     // marginRatio = (freeMargin + pnl) / positionValue * 100
     // 用于显示账户健康度
-    const marginRatio = 100; // 占位值，请实现计算逻辑
+    const marginBalance = freeMargin + pnl;
+    const positionValue = mark * absSize;
+    const marginRatio = positionValue > 0 ? (marginBalance / positionValue) * 100 : 100;
 
     return {
       symbol: 'ETH',
@@ -113,7 +115,7 @@ export const Positions: React.FC = observer(() => {
                   <th className="pb-3 text-right">Entry Price</th>
                   <th className="pb-3 text-right">Mark Price</th>
                   <th className="pb-3 text-right">Liq. Price</th>
-                  {/* TODO Day 7: 添加 Health 列表头 */}
+                  <th className="pb-3 text-right">Health</th>
                   <th className="pb-3 text-right">PnL (ROE%)</th>
                 </tr>
               </thead>
@@ -137,12 +139,15 @@ export const Positions: React.FC = observer(() => {
                     <td className="py-3 text-right font-mono text-gray-300">{displayPosition.entryPrice.toLocaleString()}</td>
                     <td className="py-3 text-right font-mono text-gray-300">{displayPosition.markPrice.toLocaleString()}</td>
                     <td className="py-3 text-right font-mono text-nebula-orange">{displayPosition.liqPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                    {/* TODO Day 7: 添加 Health 列数据
-                        显示 marginRatio，根据值使用不同颜色：
-                        - 红色 (<2%): 危险
-                        - 黄色 (2-5%): 警告
-                        - 绿色 (>5%): 安全
-                    */}
+                    <td className="py-3 text-right font-mono">
+                      <span className={
+                        displayPosition.marginRatio < 2 ? 'text-red-500' :
+                        displayPosition.marginRatio < 5 ? 'text-yellow-500' :
+                        'text-green-500'
+                      }>
+                        {displayPosition.marginRatio.toFixed(1)}%
+                      </span>
+                    </td>
                     <td className="py-3 text-right font-mono">
                       <div className={displayPosition.pnl >= 0 ? 'text-nebula-teal' : 'text-nebula-pink'}>
                         {displayPosition.pnl >= 0 ? '+' : ''}
