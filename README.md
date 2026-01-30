@@ -17,7 +17,6 @@
 | **Day 5** | 资金费率 | Funding Rate 公式, 多空结算 |
 | **Day 6** | 清算系统 | 健康度检查, 强制平仓, 奖励机制 |
 | **Day 7** | 集成测试 | 端到端流程验证 |
-| **Day 8+** | 商业化扩展 | **VIP等级系统 + 手续费管理 + 返佣系统** ✨ |
 
 ## 📁 项目结构
 
@@ -188,17 +187,6 @@ forge test --match-contract Day7IntegrationTest -vvv
 - **返佣中心**：邀请链接生成、推荐人绑定、返佣统计
 - **自动识别**：通过URL参数（`?ref=0x...`）自动识别推荐人
 
-详细说明请参考：
-- [商业化扩展实施总结](docs/IMPLEMENTATION_SUMMARY.md)
-- [商业化扩展实施说明](docs/COMMERCIAL_EXTENSION_IMPLEMENTATION.md)
-
-## 📚 学习资源
-
-### 核心文档
-- [完整启动指南](docs/COMPLETE_SETUP_GUIDE.md) - **详细的服务启动和故障排查指南**
-- [商业化扩展实施总结](docs/IMPLEMENTATION_SUMMARY.md) - **Day 8+扩展功能完整总结**
-- [手续费+VIP系统实现说明](docs/fee-vip-system.md) - VIP和手续费系统完整说明
-- [前端VIP系统实现说明](docs/frontend-vip-implementation.md) - 前端VIP功能实现细节
 
 ### 课程文档
 - [Day 1: 保证金系统](docs/day1-guide.md)
